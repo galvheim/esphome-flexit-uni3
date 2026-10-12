@@ -33,18 +33,7 @@ Et Flexit-aggregat har to deler som snakker sammen over en RS485-kabel:
 Du kobler fra CL60 og setter inn en ESP32-S3 med en RS485-modul på samme kabel. CS60 tror den snakker med
 panelet sitt, mens ESP-en i virkeligheten sender alt videre til Home Assistant – og tar imot kommandoer tilbake.
 
-```mermaid
-flowchart LR
-  subgraph before ["FØR"]
-    direction LR
-    CL60["CL60 veggpanel"] -->|RS485| CS60A["CS60 hjernen"]
-  end
-  subgraph after ["ETTER"]
-    direction LR
-    HA["Home Assistant"] <-->|WiFi| ESP["ESP32-S3 og RS485-modul"]
-    ESP -->|RS485| CS60B["CS60 hjernen"]
-  end
-```
+![Før: CL60-panelet styrer CS60. Etter: ESP32-S3 styrer CS60 og snakker med Home Assistant.](docs/for-etter.svg)
 
 ## Hva du får
 

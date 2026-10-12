@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" width="900" height="300" font-family="Helvetica, Arial, sans-serif">
+  <rect x="0" y="0" width="900" height="300" rx="12" fill="#ffffff"/>
+  <defs>
+    <marker id="pil" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+  </defs>
+  <style>
+    .ramme { fill: none; stroke: #c9ced6; stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .overskrift { font-size: 15px; font-weight: bold; fill: #555; letter-spacing: 2px; }
+    .boks { stroke-width: 2; }
+    .navn { font-size: 16px; font-weight: bold; fill: #111; }
+    .under { font-size: 12px; fill: #555; }
+    .linje { stroke: #333; stroke-width: 2.5; fill: none; }
+    .etikett { font-size: 12px; fill: #333; }
+  </style>
+
+  <!-- FØR -->
+  <rect class="ramme" x="15" y="15" width="300" height="270" rx="10"/>
+  <text class="overskrift" x="165" y="42" text-anchor="middle">FØR</text>
+  <rect class="boks" x="40" y="70" width="120" height="70" rx="8" fill="#fdecec" stroke="#d62020" stroke-dasharray="6 4"/>
+  <text class="navn" x="100" y="100" text-anchor="middle">CL60</text>
+  <text class="under" x="100" y="120" text-anchor="middle">veggpanel</text>
+  <rect x="180" y="91" width="96" height="28" rx="14" fill="#d62020"/>
+  <text x="228" y="110" text-anchor="middle" font-size="13" font-weight="bold" fill="#ffffff">erstattes</text>
+  <rect class="boks" x="40" y="195" width="250" height="70" rx="8" fill="#fff4e0" stroke="#e08a00"/>
+  <text class="navn" x="165" y="225" text-anchor="middle">CS60</text>
+  <text class="under" x="165" y="245" text-anchor="middle">hjernen inne i aggregatet</text>
+  <line class="linje" x1="100" y1="140" x2="100" y2="193" marker-end="url(#pil)"/>
+  <text class="etikett" x="108" y="172">RS485</text>
+
+  <!-- pil mellom -->
+  <line class="linje" x1="330" y1="150" x2="372" y2="150" marker-end="url(#pil)"/>
+
+  <!-- ETTER -->
+  <rect class="ramme" x="385" y="15" width="500" height="270" rx="10"/>
+  <text class="overskrift" x="635" y="42" text-anchor="middle">ETTER</text>
+  <rect class="boks" x="405" y="70" width="170" height="70" rx="8" fill="#e6f6fd" stroke="#41bdf5"/>
+  <text class="navn" x="490" y="100" text-anchor="middle">Home Assistant</text>
+  <text class="under" x="490" y="120" text-anchor="middle">dashboard og automasjoner</text>
+  <rect class="boks" x="690" y="70" width="175" height="70" rx="8" fill="#ecf7ee" stroke="#2e9d3a"/>
+  <text class="navn" x="777" y="100" text-anchor="middle">ESP32-S3</text>
+  <text class="under" x="777" y="120" text-anchor="middle">+ RS485-modul</text>
+  <line class="linje" x1="577" y1="105" x2="688" y2="105" marker-start="url(#pil)" marker-end="url(#pil)"/>
+  <text class="etikett" x="632" y="97" text-anchor="middle">WiFi</text>
+  <rect class="boks" x="615" y="195" width="250" height="70" rx="8" fill="#fff4e0" stroke="#e08a00"/>
+  <text class="navn" x="740" y="225" text-anchor="middle">CS60</text>
+  <text class="under" x="740" y="245" text-anchor="middle">hjernen inne i aggregatet</text>
+  <line class="linje" x1="777" y1="140" x2="777" y2="193" marker-end="url(#pil)"/>
+  <text class="etikett" x="785" y="172">RS485</text>
+</svg>
