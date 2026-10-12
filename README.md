@@ -35,11 +35,14 @@ panelet sitt, mens ESP-en i virkeligheten sender alt videre til Home Assistant �
 
 ```mermaid
 flowchart LR
-  subgraph FØR
-    CL60["CL60<br/>veggpanel"] -- RS485 --> CS60a["CS60<br/>hjernen i aggregatet"]
+  subgraph before ["FØR"]
+    direction LR
+    CL60["CL60 veggpanel"] -->|RS485| CS60A["CS60 hjernen"]
   end
-  subgraph ETTER
-    HA["Home Assistant"] <-- WiFi --> ESP["ESP32-S3<br/>+ RS485-modul"] -- RS485 --> CS60b["CS60<br/>hjernen i aggregatet"]
+  subgraph after ["ETTER"]
+    direction LR
+    HA["Home Assistant"] <-->|WiFi| ESP["ESP32-S3 og RS485-modul"]
+    ESP -->|RS485| CS60B["CS60 hjernen"]
   end
 ```
 
