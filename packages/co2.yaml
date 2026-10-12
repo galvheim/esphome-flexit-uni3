@@ -1,0 +1,52 @@
+# ============================================================
+# CO2 – valgfri: minst Normal når CO2 er høy
+# ============================================================
+# Over co2_hoy_ppm heves modus til minst Normal. Tilbake når CO2 har vært
+# under co2_ok_ppm i co2_ok_min minutter.
+# Virker bare når bryteren «Automatikk» er på.
+#
+# Trenger en CO2-sensor i HA (f.eks. SCD40/SCD41/SenseAir S8).
+# ============================================================
+
+substitutions:
+  co2_entitet: sensor.stue_co2
+  co2_hoy_ppm: "1000"         # over dette → minst Normal
+  co2_ok_ppm: "800"           # under dette i co2_ok_min minutter → tilbake
+  co2_ok_min: "10"
+
+globals:
+  - id: co2_teller_min
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+sensor:
+  - platform: homeassistant
+    id: co2_ha
+    entity_id: ${co2_entitet}
+
+interval:
+  - interval: 60s
+    then:
+      - lambda: |-
+          bool &hoy = id(krav_co2);
+          int &ct = id(co2_teller_min);
+          float co2 = id(co2_ha).state;
+          // HA sender bare ved endringer, så alder sier ingenting her;
+          // bare «unavailable» (NAN) gjør at CO2 ignoreres.
+          if (isnan(co2)) {
+            hoy = false;
+            ct = 0;
+          } else if (!hoy) {
+            if (co2 > ${co2_hoy_ppm}) { hoy = true; ct = 0; }
+          } else {
+            ct = co2 < ${co2_ok_ppm} ? ct + 1 : 0;
+            if (ct >= ${co2_ok_min}) { hoy = false; ct = 0; }
+          }
+
+binary_sensor:
+  - platform: template
+    id: co2_hoy
+    name: "Høy CO2"
+    icon: "mdi:molecule-co2"
+    lambda: 'return id(krav_co2);'

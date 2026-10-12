@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 480" width="1000" height="480" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <rect x="0" y="0" width="1000" height="480" rx="12" fill="#ffffff"/>
+  <style>
+    .boks { fill: #f4f6f8; stroke: #333; stroke-width: 1.5; }
+    .tittel { font-weight: bold; font-size: 14px; fill: #111; }
+    .pinne { fill: #111; }
+    .liten { font-size: 11px; fill: #555; }
+    .ledning { fill: none; stroke-width: 3; stroke-linejoin: round; }
+    .prikk { stroke: none; }
+  </style>
+
+  <!-- RJ12 fra CS60 -->
+  <rect class="boks" x="20" y="60" width="170" height="220" rx="6"/>
+  <text class="tittel" x="105" y="50" text-anchor="middle">RJ12 fra CS60</text>
+  <text class="pinne" x="32" y="104">1 Brun   +12 V</text>
+  <text class="pinne" x="32" y="134">2 Gul    +12 V</text>
+  <text class="pinne" x="32" y="164">3 Grønn  B</text>
+  <text class="pinne" x="32" y="194">4 Rød    A</text>
+  <text class="pinne" x="32" y="224">5 Svart  GND</text>
+  <text class="pinne" x="32" y="254">6 Blå    GND</text>
+
+  <!-- Buck -->
+  <rect class="boks" x="290" y="45" width="160" height="100" rx="6"/>
+  <text class="tittel" x="370" y="35" text-anchor="middle">Buck 12 V → 5 V</text>
+  <text class="pinne" x="298" y="79">IN+</text>
+  <text class="pinne" x="298" y="119">IN−</text>
+  <text class="pinne" x="442" y="79" text-anchor="end">OUT+</text>
+  <text class="pinne" x="442" y="119" text-anchor="end">OUT−</text>
+
+  <!-- RS485 -->
+  <rect class="boks" x="290" y="205" width="160" height="150" rx="6"/>
+  <text class="tittel" x="370" y="195" text-anchor="middle">TTL-RS485 (isolert)</text>
+  <text class="liten" x="370" y="372" text-anchor="middle">automatisk retning, ingen DE-pinne</text>
+  <text class="pinne" x="298" y="234">B+</text>
+  <text class="pinne" x="298" y="264">A+</text>
+  <text class="pinne" x="298" y="294">⏚ (buss-GND)</text>
+  <text class="pinne" x="442" y="234" text-anchor="end">VCC</text>
+  <text class="pinne" x="442" y="264" text-anchor="end">GND</text>
+  <text class="pinne" x="442" y="304" text-anchor="end">TX</text>
+  <text class="pinne" x="442" y="334" text-anchor="end">RX</text>
+
+  <!-- ESP32-S3 -->
+  <rect class="boks" x="600" y="45" width="170" height="310" rx="6"/>
+  <text class="tittel" x="685" y="35" text-anchor="middle">ESP32-S3 Super Mini</text>
+  <text class="pinne" x="608" y="79">5V</text>
+  <text class="pinne" x="608" y="119">GND</text>
+  <text class="pinne" x="608" y="304">GPIO44 (RX)</text>
+  <text class="pinne" x="608" y="334">GPIO43 (TX)</text>
+  <text class="pinne" x="762" y="204" text-anchor="end">3V3</text>
+  <text class="pinne" x="762" y="234" text-anchor="end">GND</text>
+  <text class="pinne" x="762" y="264" text-anchor="end">GPIO4</text>
+  <text class="pinne" x="762" y="294" text-anchor="end">GPIO3</text>
+
+  <!-- OLED -->
+  <rect class="boks" x="840" y="175" width="140" height="135" rx="6"/>
+  <text class="tittel" x="910" y="152" text-anchor="middle">OLED 1,5" SH1107</text>
+  <text class="liten" x="910" y="167" text-anchor="middle">(valgfri)</text>
+  <text class="pinne" x="848" y="204">VCC</text>
+  <text class="pinne" x="848" y="234">GND</text>
+  <text class="pinne" x="848" y="264">SDA</text>
+  <text class="pinne" x="848" y="294">SCL</text>
+
+  <!-- Ledninger fra RJ12 -->
+  <polyline class="ledning" stroke="#8b4513" points="190,100 230,100 230,75 290,75"/>
+  <polyline class="ledning" stroke="#e0b000" points="190,130 215,130"/>
+  <text class="liten" x="220" y="134">ikke i bruk</text>
+  <polyline class="ledning" stroke="#2e9d3a" points="190,160 265,160 265,230 290,230"/>
+  <polyline class="ledning" stroke="#d62020" points="190,190 255,190 255,260 290,260"/>
+  <polyline class="ledning" stroke="#222222" points="190,220 245,220 245,290 290,290"/>
+  <polyline class="ledning" stroke="#2a5bd7" points="190,250 205,250 205,115 290,115"/>
+
+  <!-- 5 V og GND fra buck -->
+  <polyline class="ledning" stroke="#d62020" points="450,75 600,75"/>
+  <polyline class="ledning" stroke="#d62020" points="520,75 520,230 450,230"/>
+  <circle class="prikk" cx="520" cy="75" r="5" fill="#d62020"/>
+  <polyline class="ledning" stroke="#222222" points="450,115 600,115"/>
+  <polyline class="ledning" stroke="#222222" points="545,115 545,260 450,260"/>
+  <circle class="prikk" cx="545" cy="115" r="5" fill="#222222"/>
+
+  <!-- UART -->
+  <polyline class="ledning" stroke="#7b3fbf" points="450,300 600,300"/>
+  <polyline class="ledning" stroke="#e08a00" points="450,330 600,330"/>
+
+  <!-- I2C til OLED -->
+  <polyline class="ledning" stroke="#d62020" points="770,200 840,200"/>
+  <polyline class="ledning" stroke="#222222" points="770,230 840,230"/>
+  <polyline class="ledning" stroke="#1e88a8" points="770,260 840,260"/>
+  <polyline class="ledning" stroke="#9c27b0" points="770,290 840,290"/>
+
+  <!-- Merknader -->
+  <text class="liten" x="20" y="420">Fargene til venstre er ledningene i RJ12-kabelen. Gul er også +12 V – den må aldri kobles til ESP-en.</text>
+  <text class="liten" x="20" y="438">Modulens TX går til ESP-ens RX (GPIO44) og omvendt. Noen moduler merker motsatt: får du ingen data, bytt TX og RX.</text>
+  <text class="liten" x="20" y="456">A og B: får du ingen data, prøv å bytte A og B. Buss-GND (⏚) er på den isolerte siden av modulen.</text>
+</svg>

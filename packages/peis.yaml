@@ -1,0 +1,67 @@
+# ============================================================
+# PEIS / VEDFYRING – valgfri
+# ============================================================
+# Bryteren «Vedfyring» setter anlegget i Normal og senker avtrekket litt.
+# Da blir det lett overtrykk i huset, så pipa trekker bedre når du fyrer
+# opp. Slår seg av selv etter peis_min minutter.
+#
+# Tips: start den fra en NFC-brikke ved peisen eller en knapp i HA
+# (switch.turn_on). Et nytt påslag starter tiden på nytt.
+# ============================================================
+
+substitutions:
+  peis_min: "25"              # vedfyring slår seg av etter så mange minutter
+  peis_avtrekk_ned: "20"      # så mange prosentpoeng lavere avtrekk i Normal
+
+globals:
+  - id: modus_for_peis
+    type: int
+    restore_value: no
+    initial_value: '1'
+
+script:
+  - id: peis_start
+    then:
+      - lambda: |-
+          using namespace flexit_modbus_server;
+          if (id(krav_peis)) return;
+          id(modus_for_peis) = id(server)->read_holding_register(REG_MODE);
+          id(krav_peis) = true;
+          id(avtrekk_normal_ned) = ${peis_avtrekk_ned};
+          ESP_LOGI("peis", "Vedfyring: Normal, avtrekk senket %d prosentpoeng", ${peis_avtrekk_ned});
+          if (!id(krav_royk)) id(server)->send_cmd(REG_CMD_MODE, 2);
+      - script.execute: vifte_synk
+      - script.execute: peis_timer
+
+  - id: peis_timer
+    mode: restart
+    then:
+      - delay: ${peis_min}min
+      - switch.turn_off: vedfyring
+
+  - id: peis_avslutt
+    then:
+      - script.stop: peis_timer
+      - lambda: |-
+          using namespace flexit_modbus_server;
+          if (!id(krav_peis)) return;
+          id(krav_peis) = false;
+          id(avtrekk_normal_ned) = 0;
+          ESP_LOGI("peis", "Vedfyring ferdig");
+          // Med Automatikk velger den modus; ellers tilbake til forrige
+          if (!id(automatikk).state && !id(krav_royk) && !id(krav_boost)) {
+            int m = id(modus_for_peis);
+            id(server)->send_cmd(REG_CMD_MODE, (m < 0 || m > 3) ? 1 : m);
+          }
+      - script.execute: vifte_synk
+
+switch:
+  - platform: template
+    id: vedfyring
+    name: "Vedfyring"
+    icon: "mdi:fireplace"
+    lambda: 'return id(krav_peis);'
+    turn_on_action:
+      - script.execute: peis_start
+    turn_off_action:
+      - script.execute: peis_avslutt

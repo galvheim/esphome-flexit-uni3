@@ -1,0 +1,37 @@
+# ============================================================
+# TØRR LUFT – valgfri: høyst Min når inneluften er tørr
+# ============================================================
+# Om vinteren blir inneluften tørr med mye ventilasjon. Under torr_inn_rh
+# begrenses modus til Min, til fukten er over torr_ut_rh igjen.
+# Virker bare når bryteren «Automatikk» er på.
+#
+# Trenger en fuktsensor inne i HA. Har du flere: lag et snitt i HA
+# (Hjelpere → Lag hjelper → Kombiner tilstanden til flere sensorer →
+# Gjennomsnitt) og bruk den.
+# ============================================================
+
+substitutions:
+  inne_fukt_entitet: sensor.stue_luftfuktighet
+  torr_inn_rh: "25.0"         # under dette → høyst Min
+  torr_ut_rh: "30.0"          # over dette → normal drift igjen
+
+sensor:
+  - platform: homeassistant
+    id: inne_fukt
+    entity_id: ${inne_fukt_entitet}
+
+interval:
+  - interval: 60s
+    then:
+      - lambda: |-
+          float rh = id(inne_fukt).state;
+          if (isnan(rh)) id(krav_torr) = false;
+          else if (rh < ${torr_inn_rh}) id(krav_torr) = true;
+          else if (rh > ${torr_ut_rh}) id(krav_torr) = false;
+
+binary_sensor:
+  - platform: template
+    id: torr_luft
+    name: "Tørr inneluft"
+    icon: "mdi:water-off"
+    lambda: 'return id(krav_torr);'

@@ -1,0 +1,491 @@
+# ============================================================
+# KJERNE – må alltid være med
+# ============================================================
+# ESP-en oppfører seg som et CI600-veggpanel på Modbus-bussen til
+# CS60-styringen. Den leser alt CS60 kringkaster (temperaturer, modus,
+# vifter, alarmer) og sender kommandoer tilbake.
+#
+# Denne pakken gir:
+#   - temperaturer, viftehastighet, varmegjenvinning, varmebatteri
+#   - modusvalg (Stop/Min/Normal/Max) og temperatur-settpunkt
+#   - viftehastighet (%) for tilluft og avtrekk i hver modus
+#   - filteralarm og knapper for å nullstille alarmer
+#   - bryteren «Automatikk» og motoren som de valgfrie pakkene
+#     (dusj, CO2, regn, tørr luft, røykstopp, peis, boost) bruker
+#
+# Alle verdier under «substitutions» kan overstyres i hovedfilen.
+# ============================================================
+
+substitutions:
+  modbus_tx_pin: GPIO43       # til DI/TXD på RS485-modulen
+  modbus_rx_pin: GPIO44       # til RO/RXD på RS485-modulen
+  modbus_adresse: "3"         # 1–3. Originalpanelet bruker 2.
+  vifte_synk_min: "10"        # samme viftehastighet sendes tidligst på nytt etter så mange minutter
+
+esp32:
+  board: esp32-s3-devkitc-1   # ESP32-S3 Super Mini
+  variant: esp32s3
+  framework:
+    type: arduino             # flexit_modbus_server krever Arduino
+
+# DEBUG er nødvendig: med lavere nivå slutter komponenten å levere
+# sensorverdier i nyere ESPHome (MSkjel issue #16).
+# baud_rate: 0 = ingen seriell logg, fordi UART0 (GPIO43/44) brukes til
+# RS485. Loggen leses over WiFi.
+logger:
+  baud_rate: 0
+  level: DEBUG
+
+uart:
+  id: modbus_uart
+  tx_pin: ${modbus_tx_pin}
+  rx_pin: ${modbus_rx_pin}
+  baud_rate: 115200
+  # CS60 sender rammer tett i tett. Standardbufferen (256 B) renner over
+  # når loopen er opptatt litt (f.eks. med skjermoppdatering).
+  rx_buffer_size: 4096
+
+flexit_modbus_server:
+  - id: server
+    uart_id: modbus_uart
+    address: ${modbus_adresse}
+    # Har RS485-modulen en DE/RE-pinne (MAX485, MAX3485 o.l.)? Se README.
+
+globals:
+  # Modus brukeren har valgt (0 Stop, 1 Min, 2 Normal, 3 Max).
+  # Automatikken justerer ut fra denne.
+  - id: grunnmodus
+    type: int
+    restore_value: yes
+    initial_value: '1'
+
+  # Viftehastigheter (%) per modus. ESP-en eier verdiene og sender dem til
+  # CS60. 0 = ikke satt ennå: da overtas verdien CS60 allerede har, så
+  # anlegget ikke endrer seg ved første oppstart.
+  - id: tilluft_min
+    type: uint16_t
+    restore_value: yes
+    initial_value: '0'
+  - id: tilluft_normal
+    type: uint16_t
+    restore_value: yes
+    initial_value: '0'
+  - id: tilluft_maks
+    type: uint16_t
+    restore_value: yes
+    initial_value: '0'
+  - id: avtrekk_min
+    type: uint16_t
+    restore_value: yes
+    initial_value: '0'
+  - id: avtrekk_normal
+    type: uint16_t
+    restore_value: yes
+    initial_value: '0'
+  - id: avtrekk_maks
+    type: uint16_t
+    restore_value: yes
+    initial_value: '0'
+  # Prosentpoeng avtrekket i Normal senkes midlertidig (brukes av peis.yaml)
+  - id: avtrekk_normal_ned
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  # «Krav» fra de valgfrie pakkene. Kjernen leser bare disse, så hver
+  # pakke kan tas med eller utelates uavhengig av de andre.
+  # Tvinger modus (gjelder også når Automatikk er av):
+  - id: krav_royk               # røykstopp.yaml → Stop
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: krav_peis               # peis.yaml → Normal
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: krav_boost              # boost.yaml → Max
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  # Justerer grunnmodus (bare når Automatikk er på):
+  - id: krav_torr               # torr_luft.yaml → høyst Min
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: krav_regn               # regn.yaml → høyst Min
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: krav_co2                # co2.yaml → minst Normal
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: krav_dusj               # dusj.yaml → minst denne modusen (0 = ingen)
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: automatikk_grunn        # hvorfor gjeldende modus er valgt
+    type: std::string
+    restore_value: no
+    initial_value: '"Av"'
+
+interval:
+  - interval: 10s
+    then:
+      - script.execute: vifte_synk
+
+  # Automatikk, hvert minutt. Rekkefølge (høyest prioritet først):
+  #   Røyk → Stop, Vedfyring → Normal, Boost → Max
+  #   (disse gjelder også når Automatikk er av)
+  #   Med Automatikk på, med grunnmodus som utgangspunkt:
+  #     Tørr luft / regn → høyst Min
+  #     Høy CO2          → minst Normal
+  #     Dusj             → minst dusj-modus
+  # Automatikken sender aldri Stop av seg selv.
+  - interval: 60s
+    then:
+      - lambda: |-
+          using namespace flexit_modbus_server;
+          auto *s = id(server);
+          // Ingen styring før CS60-data er mottatt (settpunkt 0 = ukjent)
+          if (s->read_holding_register(REG_TEMPERATURE_SETPOINT) == 0) return;
+          int modus = s->read_holding_register(REG_MODE);
+          auto sett = [&](int onsket, const char *hvorfor) {
+            id(automatikk_grunn) = hvorfor;
+            if (onsket != modus) {
+              ESP_LOGI("automatikk", "%s: modus %d -> %d", hvorfor, modus, onsket);
+              s->send_cmd(REG_CMD_MODE, onsket);
+            }
+          };
+
+          if (id(krav_royk)) { sett(0, "Røyk"); return; }
+          if (id(krav_peis)) { sett(2, "Vedfyring"); return; }
+          if (id(krav_boost)) { sett(3, "Boost"); return; }
+          if (!id(automatikk).state) return;
+
+          // Grunnmodus Stop røres ikke. Er anlegget startet et annet sted,
+          // brukes Min som utgangspunkt.
+          int grunn = id(grunnmodus);
+          if (grunn < 0 || grunn > 3) grunn = 1;
+          if (grunn == 0 && modus != 0) grunn = 1;
+          int onsket = grunn;
+          const char *hvorfor = "Grunnmodus";
+          if (grunn != 0) {
+            if (id(krav_torr) && onsket > 1) { onsket = 1; hvorfor = "Tørr inneluft"; }
+            if (id(krav_regn) && onsket > 1) { onsket = 1; hvorfor = "Regn/yr/tåke"; }
+            if (id(krav_co2) && onsket < 2) { onsket = 2; hvorfor = "Høy CO2"; }
+            if (id(krav_dusj) > 0 && onsket < id(krav_dusj)) { onsket = id(krav_dusj); hvorfor = "Dusj"; }
+          }
+          sett(onsket, hvorfor);
+
+script:
+  # Sender viftehastighetene til CS60. En verdi sendes når den er endret,
+  # eller når CS60 melder noe annet (f.eks. etter omstart), men da tidligst
+  # vifte_synk_min etter forrige sending.
+  - id: vifte_synk
+    mode: queued
+    then:
+      - lambda: |-
+          using namespace flexit_modbus_server;
+          auto *s = id(server);
+          // Ingen sending før CS60-data er mottatt
+          if (s->read_holding_register(REG_TEMPERATURE_SETPOINT) == 0) return;
+          const HoldingRegisterIndex reg[6] = {
+            REG_CMD_PERCENTAGE_SUPPLY_FAN_MIN, REG_CMD_PERCENTAGE_SUPPLY_FAN_NORMAL,
+            REG_CMD_PERCENTAGE_SUPPLY_FAN_MAX, REG_CMD_PERCENTAGE_EXTRACT_FAN_MIN,
+            REG_CMD_PERCENTAGE_EXTRACT_FAN_NORMAL, REG_CMD_PERCENTAGE_EXTRACT_FAN_MAX};
+          uint16_t *verdi[6] = {
+            &id(tilluft_min), &id(tilluft_normal), &id(tilluft_maks),
+            &id(avtrekk_min), &id(avtrekk_normal), &id(avtrekk_maks)};
+          static uint16_t sendt[6] = {0};
+          static uint32_t sendt_ms[6] = {0};
+          uint32_t now = millis();
+          for (int i = 0; i < 6; i++) {
+            uint16_t cs60 = s->read_holding_register(reg[i]);
+            // Første oppstart: overta det anlegget allerede kjører på
+            if (*verdi[i] == 0) {
+              if (cs60 >= 20 && cs60 <= 100) {
+                *verdi[i] = cs60;
+                sendt[i] = cs60;
+                ESP_LOGI("vifte", "Overtar %u %% fra CS60 (reg 0x%02X)", cs60, (int) reg[i]);
+              }
+              continue;
+            }
+            uint16_t onsket = *verdi[i];
+            if (i == 4 && id(avtrekk_normal_ned) > 0)
+              onsket = std::max(20, (int) onsket - id(avtrekk_normal_ned));
+            if (onsket < 20 || onsket > 100) continue;
+            bool ny = onsket != sendt[i];
+            bool avvik = cs60 != onsket &&
+                         now - sendt_ms[i] >= ${vifte_synk_min} * 60000UL;
+            if (ny || avvik) {
+              if (!ny) ESP_LOGW("vifte", "CS60 har %u %% i reg 0x%02X, sender %u %% på nytt",
+                                cs60, (int) reg[i], onsket);
+              s->send_cmd(reg[i], onsket);
+              sendt[i] = onsket;
+              sendt_ms[i] = now;
+            }
+          }
+
+sensor:
+  - platform: template
+    id: tilluft_temperatur
+    name: "Tilluft temperatur"
+    update_interval: 60s
+    device_class: temperature
+    state_class: measurement
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    lambda: |-
+      return id(server)->read_holding_register_temperature(
+        flexit_modbus_server::REG_TEMPERATURE_SUPPLY_AIR);
+    filters:
+      - delta: 0.2
+
+  - platform: template
+    id: uteluft_temperatur
+    name: "Uteluft temperatur"
+    update_interval: 60s
+    device_class: temperature
+    state_class: measurement
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    lambda: |-
+      return id(server)->read_holding_register_temperature(
+        flexit_modbus_server::REG_TEMPERATURE_OUTDOOR_AIR);
+    filters:
+      - delta: 0.2
+
+  - platform: template
+    id: tilluft_viftehastighet
+    name: "Tilluft viftehastighet"
+    update_interval: 5s
+    state_class: measurement
+    unit_of_measurement: "%"
+    icon: "mdi:fan"
+    lambda: |-
+      return id(server)->read_holding_register(
+        flexit_modbus_server::REG_PERCENTAGE_SUPPLY_FAN);
+
+  - platform: template
+    id: varmebatteri
+    name: "Varmebatteri"
+    update_interval: 5s
+    state_class: measurement
+    unit_of_measurement: "%"
+    icon: "mdi:radiator"
+    lambda: |-
+      return id(server)->read_holding_register(
+        flexit_modbus_server::REG_PERCENTAGE_HEATING);
+
+  - platform: template
+    id: varmegjenvinning
+    name: "Varmegjenvinning"
+    update_interval: 5s
+    state_class: measurement
+    unit_of_measurement: "%"
+    icon: "mdi:sync"
+    lambda: |-
+      return id(server)->read_holding_register(
+        flexit_modbus_server::REG_PERCENTAGE_HEAT_EXCHANGER);
+
+binary_sensor:
+  - platform: template
+    id: alarm_filter
+    name: "Filterbytte"
+    device_class: problem
+    lambda: |-
+      return id(server)->read_holding_register(
+        flexit_modbus_server::REG_ALARM_FILTER_CHANGE) != 0;
+
+text_sensor:
+  - platform: template
+    id: gjeldende_modus
+    name: "Gjeldende modus"
+    update_interval: 2s
+    icon: "mdi:fan-auto"
+    lambda: |-
+      return flexit_modbus_server::mode_to_string(
+        id(server)->read_holding_register(flexit_modbus_server::REG_MODE));
+
+  - platform: template
+    id: automatikk_status
+    name: "Automatikk status"
+    update_interval: 10s
+    icon: "mdi:fan-auto"
+    lambda: |-
+      if (id(krav_royk)) return {"RØYK – viftene stoppet"};
+      if (id(krav_peis)) return {"Vedfyring"};
+      if (id(krav_boost)) return {"Boost"};
+      if (!id(automatikk).state) return {"Manuell"};
+      return id(automatikk_grunn);
+
+select:
+  - platform: template
+    id: sett_modus
+    name: "Sett modus"
+    update_interval: 5s
+    icon: "mdi:fan-speed-3"
+    lambda: |-
+      return flexit_modbus_server::mode_to_string(
+        id(server)->read_holding_register(flexit_modbus_server::REG_MODE));
+    options:
+      - Stop
+      - Min
+      - Normal
+      - Max
+    # Valget blir også grunnmodus for automatikken
+    set_action:
+      lambda: |-
+        uint16_t m = flexit_modbus_server::string_to_mode(x);
+        id(grunnmodus) = m;
+        id(server)->send_cmd(flexit_modbus_server::REG_CMD_MODE, m);
+
+number:
+  - platform: template
+    id: temperatur_innstilling
+    name: "Temperatur innstilling"
+    min_value: 10
+    max_value: 30
+    step: 0.5
+    update_interval: 5s
+    unit_of_measurement: "°C"
+    icon: "mdi:thermometer"
+    lambda: |-
+      using namespace flexit_modbus_server;
+      if (id(server)->read_holding_register(REG_TEMPERATURE_SETPOINT) == 0) return NAN;
+      return id(server)->read_holding_register_temperature(REG_TEMPERATURE_SETPOINT);
+    set_action:
+      lambda: |-
+        id(server)->send_cmd(
+          flexit_modbus_server::REG_CMD_TEMPERATURE_SETPOINT, x * 10);
+
+  # Viftehastighet per modus. Lagres i ESP-en og sendes til CS60 av vifte_synk.
+  - platform: template
+    id: tilluft_min_pst
+    name: "Tilluft min"
+    min_value: 20
+    max_value: 100
+    step: 1
+    update_interval: 10s
+    unit_of_measurement: "%"
+    icon: "mdi:fan-chevron-up"
+    lambda: 'return id(tilluft_min) ? (float) id(tilluft_min) : NAN;'
+    set_action:
+      - lambda: 'id(tilluft_min) = x;'
+      - script.execute: vifte_synk
+
+  - platform: template
+    id: tilluft_normal_pst
+    name: "Tilluft normal"
+    min_value: 20
+    max_value: 100
+    step: 1
+    update_interval: 10s
+    unit_of_measurement: "%"
+    icon: "mdi:fan-chevron-up"
+    lambda: 'return id(tilluft_normal) ? (float) id(tilluft_normal) : NAN;'
+    set_action:
+      - lambda: 'id(tilluft_normal) = x;'
+      - script.execute: vifte_synk
+
+  - platform: template
+    id: tilluft_maks_pst
+    name: "Tilluft maks"
+    min_value: 20
+    max_value: 100
+    step: 1
+    update_interval: 10s
+    unit_of_measurement: "%"
+    icon: "mdi:fan-chevron-up"
+    lambda: 'return id(tilluft_maks) ? (float) id(tilluft_maks) : NAN;'
+    set_action:
+      - lambda: 'id(tilluft_maks) = x;'
+      - script.execute: vifte_synk
+
+  - platform: template
+    id: avtrekk_min_pst
+    name: "Avtrekk min"
+    min_value: 20
+    max_value: 100
+    step: 1
+    update_interval: 10s
+    unit_of_measurement: "%"
+    icon: "mdi:fan-chevron-down"
+    lambda: 'return id(avtrekk_min) ? (float) id(avtrekk_min) : NAN;'
+    set_action:
+      - lambda: 'id(avtrekk_min) = x;'
+      - script.execute: vifte_synk
+
+  - platform: template
+    id: avtrekk_normal_pst
+    name: "Avtrekk normal"
+    min_value: 20
+    max_value: 100
+    step: 1
+    update_interval: 10s
+    unit_of_measurement: "%"
+    icon: "mdi:fan-chevron-down"
+    lambda: 'return id(avtrekk_normal) ? (float) id(avtrekk_normal) : NAN;'
+    set_action:
+      - lambda: 'id(avtrekk_normal) = x;'
+      - script.execute: vifte_synk
+
+  - platform: template
+    id: avtrekk_maks_pst
+    name: "Avtrekk maks"
+    min_value: 20
+    max_value: 100
+    step: 1
+    update_interval: 10s
+    unit_of_measurement: "%"
+    icon: "mdi:fan-chevron-down"
+    lambda: 'return id(avtrekk_maks) ? (float) id(avtrekk_maks) : NAN;'
+    set_action:
+      - lambda: 'id(avtrekk_maks) = x;'
+      - script.execute: vifte_synk
+
+switch:
+  # Hovedbryter for automatikken (dusj, CO2, regn, tørr luft). Av som
+  # standard. Påslag: gjeldende modus blir grunnmodus. Avslag: tilbake
+  # til grunnmodus.
+  - platform: template
+    id: automatikk
+    name: "Automatikk"
+    icon: "mdi:fan-auto"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_turn_on:
+      # Ikke ved gjenoppretting under oppstart: da er modusregisteret 0
+      # (ingen data fra CS60 ennå), og grunnmodus ville blitt Stop.
+      - lambda: |-
+          using namespace flexit_modbus_server;
+          if (millis() < 60000 || id(server)->read_holding_register(REG_TEMPERATURE_SETPOINT) == 0)
+            return;
+          int m = id(server)->read_holding_register(REG_MODE);
+          id(grunnmodus) = (m >= 1 && m <= 3) ? m : 1;
+    on_turn_off:
+      - lambda: |-
+          using namespace flexit_modbus_server;
+          if (id(krav_royk) || id(krav_peis) || id(krav_boost)) return;
+          int g = id(grunnmodus);
+          if (g >= 0 && g <= 3 && g != id(server)->read_holding_register(REG_MODE))
+            id(server)->send_cmd(REG_CMD_MODE, g);
+
+button:
+  - platform: template
+    id: nullstill_alarmer
+    name: "Nullstill alarmer"
+    icon: "mdi:alarm-light-off"
+    on_press:
+      - lambda: |-
+          id(server)->send_cmd(flexit_modbus_server::REG_CMD_CLEAR_ALARMS, 1);
+
+  - platform: template
+    id: nullstill_filteralarm
+    name: "Nullstill filteralarm"
+    icon: "mdi:air-filter"
+    on_press:
+      - lambda: |-
+          id(server)->send_cmd(flexit_modbus_server::REG_CMD_CLEAR_FILTER_ALARM, 1);

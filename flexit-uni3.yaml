@@ -1,0 +1,90 @@
+# ============================================================
+# Flexit UNI3 (CS60) – ESP32-S3 som veggpanel
+# https://github.com/galvheim/esphome-flexit-uni3
+# ============================================================
+# Slik bruker du denne filen:
+#   1. Lag en ny enhet i ESPHome Device Builder og lim inn hele filen.
+#   2. Legg til flexit_api_key i «Secrets» (se secrets.yaml.example).
+#   3. Fjern # foran pakkene du vil ha med, og rett entitets-ID-ene
+#      under «substitutions» så de passer ditt HA.
+#   4. Første gang flasher du med USB-kabel; senere går det over WiFi.
+#
+# Viktig: ESP-en må være på FØR CS60 starter. Se README.
+# ============================================================
+
+substitutions:
+  name: flexit-uni3
+  friendly_name: "Flexit UNI3"
+
+  # --- Pinner og adresse (standard passer koblingen i README) ---
+  # modbus_tx_pin: GPIO43
+  # modbus_rx_pin: GPIO44
+  # modbus_adresse: "3"
+  # i2c_sda_pin: GPIO4
+  # i2c_scl_pin: GPIO3
+
+  # --- Entiteter i Home Assistant (bare for pakkene du bruker) ---
+  # royk_entitet: binary_sensor.roykvarslere
+  # bad_fukt_entitet: sensor.bad_luftfuktighet
+  # co2_entitet: sensor.stue_co2
+  # inne_fukt_entitet: sensor.stue_luftfuktighet
+  # vaer_entitet: weather.forecast_hjem
+  # aggregat_temp_entitet: sensor.aggregat_temperatur
+  # aggregat_fukt_entitet: sensor.aggregat_luftfuktighet
+
+  # --- Innstillinger (standardverdiene står i hver pakke) ---
+  # boost_min: "15"
+  # peis_min: "25"
+  # co2_hoy_ppm: "1000"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  comment: "Flexit UNI3 Modbus-panel"
+  min_version: 2026.9.0
+
+api:
+  encryption:
+    key: !secret flexit_api_key
+
+# OTA bruker samme nøkkel som API-et
+ota:
+  - platform: esphome
+    encryption: {}
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Flexit-UNI3-Fallback"
+    password: !secret wifi_password
+
+captive_portal:
+
+external_components:
+  - source: github://galvheim/esphome-flexit-uni3@main
+    components: [flexit_modbus_server]
+    refresh: 1d
+
+packages:
+  flexit:
+    url: https://github.com/galvheim/esphome-flexit-uni3
+    ref: main
+    refresh: 1d
+    files:
+      - packages/kjerne.yaml        # må være med
+      # - packages/skjerm.yaml      # OLED 128x128 (SH1107)
+      # - packages/roykstopp.yaml   # stopp viftene ved røyk
+      # - packages/peis.yaml        # vedfyring: lett overtrykk
+      # - packages/boost.yaml       # Max en kort stund
+      # - packages/dusj.yaml        # mer luft når noen dusjer
+      # - packages/co2.yaml         # minst Normal ved høy CO2
+      # - packages/torr_luft.yaml   # høyst Min når inneluften er tørr
+      # - packages/regn.yaml        # høyst Min ved regn/yr/tåke
+      # - packages/kondens.yaml     # duggpunkt inne i aggregatet
+
+# Har RS485-modulen en DE/RE-pinne (MAX485/MAX3485)? Fjern # under og
+# koble DE+RE til GPIO8. Moduler med automatisk retning trenger ikke dette.
+# flexit_modbus_server:
+#   - id: !extend server
+#     tx_enable_pin: GPIO8

@@ -1,0 +1,134 @@
+# Eksempel på en dashboard-fane for Flexit UNI3, bare med innebygde kort
+# (ingen HACS nødvendig).
+#
+# Slik legger du den inn:
+#   Rediger dashboard → ⋮ → «Rå konfigurasjonsredigering», og lim inn
+#   innholdet under som et nytt element i listen «views:».
+#
+# Entitets-ID-ene forutsetter enhetsnavnet «Flexit UNI3». Har du kalt
+# enheten noe annet, bytter du «flexit_uni3_» med ditt navn.
+# Kort for pakker du ikke bruker (røykstopp, peis, boost, dusj, CO2, regn,
+# tørr luft, kondens) kan du bare fjerne.
+
+title: Ventilasjon
+path: ventilasjon
+icon: mdi:hvac
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - type: heading
+        heading: Drift
+        icon: mdi:fan
+      - type: tile
+        entity: select.flexit_uni3_sett_modus
+        name: Modus
+        grid_options:
+          columns: full
+        features:
+          - type: select-options
+      - type: tile
+        entity: sensor.flexit_uni3_automatikk_status
+        name: Styres av
+      - type: tile
+        entity: sensor.flexit_uni3_tilluft_viftehastighet
+        name: Vifte
+      - type: tile
+        entity: switch.flexit_uni3_automatikk
+        name: Automatikk
+        features:
+          - type: toggle
+      - type: tile
+        entity: switch.flexit_uni3_roykstopp
+        name: Røykstopp
+      - type: tile
+        entity: switch.flexit_uni3_vedfyring
+        name: Vedfyring
+      - type: tile
+        entity: switch.flexit_uni3_boost
+        name: Boost
+      - type: glance
+        title: Automatikk
+        show_state: true
+        entities:
+          - entity: binary_sensor.flexit_uni3_roykstopp_aktiv
+            name: Røyk
+          - entity: binary_sensor.flexit_uni3_dusj_boost
+            name: Dusj
+          - entity: binary_sensor.flexit_uni3_hoy_co2
+            name: CO2
+          - entity: binary_sensor.flexit_uni3_regn_eller_take
+            name: Regn
+          - entity: binary_sensor.flexit_uni3_torr_inneluft
+            name: Tørr luft
+          - entity: binary_sensor.flexit_uni3_filterbytte
+            name: Filter
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Temperatur og varme
+        icon: mdi:thermometer
+      - type: tile
+        entity: sensor.flexit_uni3_uteluft_temperatur
+        name: Ute
+      - type: tile
+        entity: sensor.flexit_uni3_tilluft_temperatur
+        name: Tilluft
+      - type: tile
+        entity: sensor.flexit_uni3_varmegjenvinning
+        name: Gjenvinning
+      - type: tile
+        entity: sensor.flexit_uni3_varmebatteri
+        name: Varmebatteri
+      - type: tile
+        entity: sensor.flexit_uni3_duggpunktsmargin
+        name: Duggpunktsmargin
+      - type: tile
+        entity: sensor.flexit_uni3_duggpunkt_i_aggregat
+        name: Duggpunkt
+      - type: history-graph
+        title: Siste døgn
+        hours_to_show: 24
+        grid_options:
+          columns: full
+        entities:
+          - entity: sensor.flexit_uni3_uteluft_temperatur
+            name: Ute
+          - entity: sensor.flexit_uni3_tilluft_temperatur
+            name: Tilluft
+
+  - type: grid
+    cards:
+      - type: heading
+        heading: Innstillinger
+        icon: mdi:tune
+      - type: entities
+        grid_options:
+          columns: full
+        entities:
+          - entity: number.flexit_uni3_temperatur_innstilling
+            name: Settpunkt
+          - type: section
+            label: Tilluft (%)
+          - entity: number.flexit_uni3_tilluft_min
+            name: Min
+          - entity: number.flexit_uni3_tilluft_normal
+            name: Normal
+          - entity: number.flexit_uni3_tilluft_maks
+            name: Maks
+          - type: section
+            label: Avtrekk (%)
+          - entity: number.flexit_uni3_avtrekk_min
+            name: Min
+          - entity: number.flexit_uni3_avtrekk_normal
+            name: Normal
+          - entity: number.flexit_uni3_avtrekk_maks
+            name: Maks
+          - type: section
+            label: Alarmer
+          - entity: button.flexit_uni3_nullstill_filteralarm
+            name: Nullstill filteralarm
+          - entity: button.flexit_uni3_nullstill_alarmer
+            name: Nullstill alarmer

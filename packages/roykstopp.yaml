@@ -1,0 +1,74 @@
+# ============================================================
+# RØYKSTOPP – valgfri: stopp viftene når en røykvarsler går
+# ============================================================
+# Viftene stoppes straks røykvarsleren i HA blir «på», og startes igjen
+# i forrige modus når den er klar. Gjelder også når Automatikk er av.
+# Bryteren «Røykstopp» slår funksjonen av/på (på som standard).
+#
+# Har du flere røykvarslere: lag en gruppe i HA (Innstillinger →
+# Enheter og tjenester → Hjelpere → Lag hjelper → Gruppe → Binær sensor-
+# gruppe). Gruppen er «på» når én av varslerne er på. Bruk gruppens
+# entitets-ID her.
+#
+# NB: Dette er ikke et godkjent brannsikringssystem. Det avhenger av
+# at HA, WiFi og ESP-en virker.
+# ============================================================
+
+substitutions:
+  royk_entitet: binary_sensor.roykvarslere
+
+globals:
+  - id: modus_for_royk          # modus som gjenopprettes etter røyk
+    type: int
+    restore_value: yes
+    initial_value: '1'
+
+binary_sensor:
+  - platform: homeassistant
+    id: royk_ha
+    entity_id: ${royk_entitet}
+    on_state:
+      then:
+        - script.execute: royk_sjekk
+
+  - platform: template
+    id: royk_stopp_aktiv
+    name: "Røykstopp aktiv"
+    device_class: smoke
+    lambda: 'return id(krav_royk);'
+
+script:
+  - id: royk_sjekk
+    mode: queued
+    then:
+      - lambda: |-
+          using namespace flexit_modbus_server;
+          bool royk = id(royk_ha).state;
+          int modus = id(server)->read_holding_register(REG_MODE);
+          if (royk && id(roykstopp).state && !id(krav_royk)) {
+            id(krav_royk) = true;
+            id(modus_for_royk) = modus;
+            ESP_LOGW("royk", "RØYK! Stopper viftene (modus %d -> 0)", modus);
+            id(server)->send_cmd(REG_CMD_MODE, 0);
+          } else if (!royk && id(krav_royk)) {
+            id(krav_royk) = false;
+            int m = id(modus_for_royk);
+            if (m < 1 || m > 3) m = 1;
+            ESP_LOGW("royk", "Røykvarsler klar, starter igjen (modus %d)", m);
+            id(server)->send_cmd(REG_CMD_MODE, m);
+          }
+
+switch:
+  - platform: template
+    id: roykstopp
+    name: "Røykstopp"
+    icon: "mdi:smoke-detector-variant"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_off:
+      - lambda: |-
+          if (id(krav_royk)) {
+            id(krav_royk) = false;
+            int m = id(modus_for_royk);
+            id(server)->send_cmd(flexit_modbus_server::REG_CMD_MODE, (m < 1 || m > 3) ? 1 : m);
+          }

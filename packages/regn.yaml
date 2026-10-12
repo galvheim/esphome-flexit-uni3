@@ -1,0 +1,48 @@
+# ============================================================
+# REGN – valgfri: høyst Min ved regn, yr eller tåke
+# ============================================================
+# Fuktig uteluft trekker vann inn i uteluftfilteret. Melder værvarselet
+# regn, yr eller tåke, begrenses modus til Min, og holdes der til
+# regn_etterslep_min minutter etter siste våte melding.
+# Virker bare når bryteren «Automatikk» er på.
+#
+# Trenger en vær-entitet i HA, f.eks. Met.no (standard: weather.forecast_hjem).
+# ============================================================
+
+substitutions:
+  vaer_entitet: weather.forecast_hjem
+  regn_etterslep_min: "45"    # Min beholdes så lenge etter siste våte melding
+
+globals:
+  - id: regn_teller_min         # minutter siden siste våte melding
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+text_sensor:
+  # Tilstanden til vær-entiteten er selve strengen ("rainy", "fog" ...)
+  - platform: homeassistant
+    id: vaer_tilstand
+    entity_id: ${vaer_entitet}
+
+interval:
+  - interval: 60s
+    then:
+      - lambda: |-
+          const std::string &v = id(vaer_tilstand).state;
+          bool vaat = (v == "rainy" || v == "pouring" || v == "lightning-rainy" ||
+                       v == "snowy-rainy" || v == "fog");
+          int &t = id(regn_teller_min);
+          if (vaat) {
+            id(krav_regn) = true;
+            t = 0;
+          } else if (id(krav_regn) && ++t >= ${regn_etterslep_min}) {
+            id(krav_regn) = false;
+          }
+
+binary_sensor:
+  - platform: template
+    id: regn_aktiv
+    name: "Regn eller tåke"
+    icon: "mdi:weather-fog"
+    lambda: 'return id(krav_regn);'

@@ -1,0 +1,62 @@
+# ============================================================
+# DUSJ – valgfri: øk viftene når noen dusjer
+# ============================================================
+# Følger luftfuktigheten på badet. Stiger den raskt over det vanlige
+# nivået (eller over en fast grense), heves modus til dusj_modus til
+# fukten er nede igjen, eller høyst dusj_maks_min minutter.
+# Virker bare når bryteren «Automatikk» er på.
+#
+# Trenger en fuktsensor på badet i HA.
+# ============================================================
+
+substitutions:
+  bad_fukt_entitet: sensor.bad_luftfuktighet
+  dusj_okning_rh: "8.0"       # så mange %-poeng over vanlig nivå → dusj
+  dusj_abs_rh: "80.0"         # ... eller over dette uansett
+  dusj_slutt_rh: "3.0"        # ferdig når under vanlig nivå + dette
+  dusj_maks_min: "60"         # lengste dusj-boost
+  dusj_modus: "2"             # modus under dusj: 2 = Normal, 3 = Max
+
+globals:
+  - id: bad_grunnivaa           # glidende «vanlig nivå» for fukt på badet
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: dusj_min                # minutter dusj-boost har vart
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+sensor:
+  - platform: homeassistant
+    id: bad_fukt
+    entity_id: ${bad_fukt_entitet}
+
+interval:
+  - interval: 60s
+    then:
+      - lambda: |-
+          float bad = id(bad_fukt).state;
+          float &basis = id(bad_grunnivaa);
+          int &krav = id(krav_dusj);
+          if (isnan(bad)) { krav = 0; return; }
+          if (isnan(basis)) basis = bad;
+          if (krav == 0) {
+            if (bad >= basis + ${dusj_okning_rh} || bad >= ${dusj_abs_rh}) {
+              krav = ${dusj_modus};
+              id(dusj_min) = 0;
+              ESP_LOGI("dusj", "Dusj oppdaget: %.0f %% (vanlig %.0f %%)", bad, basis);
+            } else {
+              basis += (bad - basis) / 60.0f;  // ~1 times tidskonstant
+            }
+          } else if (bad <= basis + ${dusj_slutt_rh} || ++id(dusj_min) >= ${dusj_maks_min}) {
+            krav = 0;
+            basis = bad;
+          }
+
+binary_sensor:
+  - platform: template
+    id: dusj_aktiv
+    name: "Dusj-boost"
+    icon: "mdi:shower"
+    lambda: 'return id(krav_dusj) > 0;'

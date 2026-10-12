@@ -1,0 +1,54 @@
+# ============================================================
+# BOOST – valgfri: Max en kort stund
+# ============================================================
+# Bryteren «Boost» setter anlegget i Max i boost_min minutter og går så
+# tilbake. Et nytt påslag starter tiden på nytt.
+#
+# Tips: start den fra HA med en knapp, NFC-brikke eller bevegelses-
+# sensor på toalettet (switch.turn_on).
+# ============================================================
+
+substitutions:
+  boost_min: "15"             # Max i så mange minutter
+
+globals:
+  - id: modus_for_boost
+    type: int
+    restore_value: no
+    initial_value: '1'
+
+script:
+  - id: boost_timer
+    mode: restart
+    then:
+      - delay: ${boost_min}min
+      - switch.turn_off: boost
+
+switch:
+  - platform: template
+    id: boost
+    name: "Boost"
+    icon: "mdi:fan-plus"
+    lambda: 'return id(krav_boost);'
+    turn_on_action:
+      - lambda: |-
+          using namespace flexit_modbus_server;
+          if (!id(krav_boost) && !id(krav_royk) && !id(krav_peis)) {
+            id(modus_for_boost) = id(server)->read_holding_register(REG_MODE);
+            id(krav_boost) = true;
+            ESP_LOGI("boost", "Boost: Max i ${boost_min} min");
+            id(server)->send_cmd(REG_CMD_MODE, 3);
+          }
+      - script.execute: boost_timer
+    turn_off_action:
+      - script.stop: boost_timer
+      - lambda: |-
+          using namespace flexit_modbus_server;
+          if (!id(krav_boost)) return;
+          id(krav_boost) = false;
+          ESP_LOGI("boost", "Boost ferdig");
+          // Med Automatikk velger den modus; ellers tilbake til forrige
+          if (!id(automatikk).state && !id(krav_royk) && !id(krav_peis)) {
+            int m = id(modus_for_boost);
+            id(server)->send_cmd(REG_CMD_MODE, (m < 0 || m > 3) ? 1 : m);
+          }

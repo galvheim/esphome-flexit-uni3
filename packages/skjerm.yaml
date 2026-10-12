@@ -1,0 +1,171 @@
+# ============================================================
+# SKJERM – valgfri: 1,5" OLED 128x128 (SH1107) over I2C
+# ============================================================
+# To sider som veksler hvert 5. sekund:
+#   1 = drift (modus, vifte, status, temperaturer)
+#   2 = vifter per modus, varmegjenvinning og varmebatteri
+# En liten firkant nede til høyre blinker når filteret må byttes.
+#
+# Har du en SSD1306 128x64 i stedet: bytt «model» og flytt koordinatene.
+# ============================================================
+
+substitutions:
+  i2c_sda_pin: GPIO4
+  i2c_scl_pin: GPIO3          # «strapping»-pinne: ESPHome advarer, men I2C virker fint
+  skjerm_adresse: "0x3C"
+
+i2c:
+  id: i2c_bus
+  sda: ${i2c_sda_pin}
+  scl: ${i2c_scl_pin}
+  # 400 kHz: en full oppdatering av 128x128 (2 kB) tar ~50 ms.
+  # Derfor oppdateres skjermen bare hvert sekund.
+  frequency: 400kHz
+
+font:
+  # GF_Latin_Core gir æøå og °. Roboto mangler noen sjeldne kombinasjonstegn
+  # fra settet, og de hoppes over uten advarsel.
+  - file: "gfonts://Roboto"
+    id: font_liten
+    size: 10
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  - file: "gfonts://Roboto"
+    id: font_tekst
+    size: 12
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 700
+    id: font_verdi
+    size: 18
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 700
+    id: font_modus
+    size: 20
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+
+interval:
+  - interval: 5s
+    then:
+      - display.page.show_next: oled_skjerm
+
+display:
+  - platform: ssd1306_i2c
+    model: "SH1107 128x128"
+    address: ${skjerm_adresse}
+    id: oled_skjerm
+    rotation: 180°
+    update_interval: 1s
+    pages:
+      - id: side_drift
+        lambda: |-
+          using namespace flexit_modbus_server;
+          // Sideprikker nederst, og blinkende firkant ved filteralarm
+          auto bunn = [&](int side) {
+            for (int i = 0; i < 2; i++) {
+              if (i == side) it.filled_circle(60 + i * 8, 123, 2);
+              else it.circle(60 + i * 8, 123, 2);
+            }
+            if (id(alarm_filter).state && (millis() / 1000) % 2)
+              it.filled_rectangle(126, 126, 2, 2);
+          };
+
+          // Ingen data ennå: si det tydelig
+          if (id(server)->read_holding_register(REG_TEMPERATURE_SETPOINT) == 0) {
+            it.print(64, 40, id(font_verdi), TextAlign::TOP_CENTER, "Venter");
+            it.print(64, 62, id(font_tekst), TextAlign::TOP_CENTER, "på data fra CS60");
+            bunn(0);
+            return;
+          }
+
+          // Modus stort, viftehastighet til høyre, viftebar under
+          std::string m = mode_to_string(id(server)->read_holding_register(REG_MODE));
+          for (auto &c : m) c = toupper(c);
+          it.print(0, 2, id(font_modus), m.c_str());
+          float vifte = id(tilluft_viftehastighet).state;
+          if (isnan(vifte)) it.print(127, 4, id(font_verdi), TextAlign::TOP_RIGHT, "--");
+          else it.printf(127, 4, id(font_verdi), TextAlign::TOP_RIGHT, "%.0f%%", vifte);
+          it.rectangle(0, 29, 128, 5);
+          if (!isnan(vifte)) it.filled_rectangle(0, 29, (int) (128 * vifte / 100), 5);
+
+          // Hva styrer nå? Røyk vises invertert.
+          std::string st = id(automatikk_status).state;
+          if (id(krav_royk)) {
+            it.filled_rectangle(0, 38, 128, 15);
+            it.print(64, 39, id(font_liten), COLOR_OFF, TextAlign::TOP_CENTER, "RØYK - VIFTER STOPPET");
+          } else {
+            it.print(64, 38, id(font_tekst), TextAlign::TOP_CENTER, st.c_str());
+          }
+          it.horizontal_line(0, 55, 128);
+
+          // To fliser: ute og tilluft
+          float ute = id(uteluft_temperatur).state;
+          float inn = id(tilluft_temperatur).state;
+          it.print(31, 59, id(font_liten), TextAlign::TOP_CENTER, "Ute");
+          if (isnan(ute)) it.print(31, 71, id(font_verdi), TextAlign::TOP_CENTER, "--");
+          else it.printf(31, 71, id(font_verdi), TextAlign::TOP_CENTER, "%.1f°", ute);
+          it.print(96, 59, id(font_liten), TextAlign::TOP_CENTER, "Tilluft");
+          if (isnan(inn)) it.print(96, 71, id(font_verdi), TextAlign::TOP_CENTER, "--");
+          else it.printf(96, 71, id(font_verdi), TextAlign::TOP_CENTER, "%.1f°", inn);
+          it.vertical_line(63, 58, 34);
+          it.horizontal_line(0, 94, 128);
+
+          // Settpunkt og filterstatus nederst
+          float sp = id(temperatur_innstilling).state;
+          if (isnan(sp)) it.print(0, 98, id(font_tekst), "Settp. --");
+          else it.printf(0, 98, id(font_tekst), "Settp. %.1f°", sp);
+          it.print(127, 98, id(font_tekst), TextAlign::TOP_RIGHT,
+                   id(alarm_filter).state ? "Bytt filter" : "Filter OK");
+          bunn(0);
+
+      - id: side_vifter
+        lambda: |-
+          using namespace flexit_modbus_server;
+          auto bunn = [&](int side) {
+            for (int i = 0; i < 2; i++) {
+              if (i == side) it.filled_circle(60 + i * 8, 123, 2);
+              else it.circle(60 + i * 8, 123, 2);
+            }
+            if (id(alarm_filter).state && (millis() / 1000) % 2)
+              it.filled_rectangle(126, 126, 2, 2);
+          };
+          auto bar = [&](int y, const char *navn, float v) {
+            it.print(0, y, id(font_tekst), navn);
+            it.rectangle(59, y + 3, 40, 8);
+            if (!isnan(v)) it.filled_rectangle(59, y + 3, (int) (40 * v / 100), 8);
+            if (isnan(v)) it.print(127, y, id(font_tekst), TextAlign::TOP_RIGHT, "--");
+            else it.printf(127, y, id(font_tekst), TextAlign::TOP_RIGHT, "%.0f%%", v);
+          };
+
+          // Viftehastigheter per modus; gjeldende modus invertert
+          it.print(0, 0, id(font_tekst), "VIFTER");
+          it.print(90, 2, id(font_liten), TextAlign::TOP_RIGHT, "Inn");
+          it.print(127, 2, id(font_liten), TextAlign::TOP_RIGHT, "Ut");
+          it.horizontal_line(0, 15, 128);
+          static const char *const NAVN[3] = {"Min", "Normal", "Max"};
+          const uint16_t inn[3] = {id(tilluft_min), id(tilluft_normal), id(tilluft_maks)};
+          const uint16_t ut[3] = {id(avtrekk_min), id(avtrekk_normal), id(avtrekk_maks)};
+          int modus = id(server)->read_holding_register(REG_MODE);
+          for (int i = 0; i < 3; i++) {
+            int y = 19 + i * 16;
+            bool aktiv = modus == i + 1;
+            Color c = aktiv ? COLOR_OFF : COLOR_ON;
+            if (aktiv) it.filled_rectangle(0, y, 128, 15);
+            it.print(2, y + 1, id(font_tekst), c, NAVN[i]);
+            if (inn[i]) it.printf(90, y + 1, id(font_tekst), c, TextAlign::TOP_RIGHT, "%u%%", inn[i]);
+            else it.print(90, y + 1, id(font_tekst), c, TextAlign::TOP_RIGHT, "--");
+            if (ut[i]) it.printf(127, y + 1, id(font_tekst), c, TextAlign::TOP_RIGHT, "%u%%", ut[i]);
+            else it.print(127, y + 1, id(font_tekst), c, TextAlign::TOP_RIGHT, "--");
+          }
+          it.horizontal_line(0, 70, 128);
+          bar(76, "Gjenvinn.", id(varmegjenvinning).state);
+          bar(94, "Kolbe", id(varmebatteri).state);
+          bunn(1);
