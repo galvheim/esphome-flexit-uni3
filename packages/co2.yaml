@@ -24,6 +24,8 @@ sensor:
   - platform: homeassistant
     id: co2_ha
     entity_id: ${co2_entitet}
+    on_value:
+      - lambda: 'id(vis_co2) = x;'
 
 interval:
   - interval: 60s

@@ -4,7 +4,7 @@
 # Med en temperatur- og fuktsensor inne i aggregatet (f.eks. ved
 # uteluftfilteret) regnes duggpunktet ut, og hvor mange grader lufta er
 # over det. Nær 0 betyr kondens på filter og metall.
-# Bare visning i HA – styrer ingenting.
+# Bare visning i HA og på skjermen – styrer ingenting.
 #
 # Trenger temperatur og fukt fra en sensor i aggregatet i HA
 # (f.eks. en BME280 på en egen ESP eller en Zigbee-sensor).
@@ -18,9 +18,13 @@ sensor:
   - platform: homeassistant
     id: aggregat_temperatur
     entity_id: ${aggregat_temp_entitet}
+    on_value:
+      - lambda: 'id(vis_aggregat_temp) = x;'
   - platform: homeassistant
     id: aggregat_fukt
     entity_id: ${aggregat_fukt_entitet}
+    on_value:
+      - lambda: 'id(vis_aggregat_fukt) = x;'
 
   # Duggpunkt (Magnus-formelen)
   - platform: template
@@ -37,6 +41,8 @@ sensor:
       if (isnan(t) || isnan(rh) || rh <= 0) return NAN;
       float g = logf(rh / 100.0f) + 17.62f * t / (243.12f + t);
       return 243.12f * g / (17.62f - g);
+    on_value:
+      - lambda: 'id(vis_duggpunkt) = x;'
 
   - platform: template
     id: duggpunktsmargin
@@ -48,3 +54,5 @@ sensor:
     accuracy_decimals: 1
     lambda: |-
       return id(aggregat_temperatur).state - id(duggpunkt).state;
+    on_value:
+      - lambda: 'id(vis_margin) = x;'

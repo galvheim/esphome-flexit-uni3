@@ -19,6 +19,8 @@ sensor:
   - platform: homeassistant
     id: inne_fukt
     entity_id: ${inne_fukt_entitet}
+    on_value:
+      - lambda: 'id(vis_fukt_inne) = x;'
 
 interval:
   - interval: 60s

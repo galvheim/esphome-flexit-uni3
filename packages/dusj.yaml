@@ -31,6 +31,8 @@ sensor:
   - platform: homeassistant
     id: bad_fukt
     entity_id: ${bad_fukt_entitet}
+    on_value:
+      - lambda: 'id(vis_fukt_bad) = x;'
 
 interval:
   - interval: 60s

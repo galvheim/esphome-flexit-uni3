@@ -1,9 +1,12 @@
 # ============================================================
 # SKJERM – valgfri: 1,5" OLED 128x128 (SH1107) over I2C
 # ============================================================
-# To sider som veksler hvert 5. sekund:
-#   1 = drift (modus, vifte, status, temperaturer)
-#   2 = vifter per modus, varmegjenvinning og varmebatteri
+# Tre sider som veksler hvert 5. sekund:
+#   1 = drift: modus, vifte, hva som styrer, CO2/fukt eller temperaturer
+#   2 = temperatur: settpunkt, ute, tilluft, duggpunkt, gjenvinning, kolbe
+#   3 = vifter: viftehastighet per modus
+# Verdier fra valgfrie pakker (CO2, fukt, duggpunkt) vises bare når
+# pakken er med. Uten dem viser side 1 ute- og tillufttemperatur.
 # En liten firkant nede til høyre blinker når filteret må byttes.
 #
 # Har du en SSD1306 128x64 i stedet: bytt «model» og flytt koordinatene.
@@ -70,12 +73,18 @@ display:
           using namespace flexit_modbus_server;
           // Sideprikker nederst, og blinkende firkant ved filteralarm
           auto bunn = [&](int side) {
-            for (int i = 0; i < 2; i++) {
-              if (i == side) it.filled_circle(60 + i * 8, 123, 2);
-              else it.circle(60 + i * 8, 123, 2);
+            for (int i = 0; i < 3; i++) {
+              if (i == side) it.filled_circle(56 + i * 8, 123, 2);
+              else it.circle(56 + i * 8, 123, 2);
             }
             if (id(alarm_filter).state && (millis() / 1000) % 2)
               it.filled_rectangle(126, 126, 2, 2);
+          };
+          // En flis: liten overskrift og stor verdi
+          auto flis = [&](int x, const char *navn, float v, const char *fmt) {
+            it.print(x, 59, id(font_liten), TextAlign::TOP_CENTER, navn);
+            if (isnan(v)) it.print(x, 71, id(font_verdi), TextAlign::TOP_CENTER, "--");
+            else it.printf(x, 71, id(font_verdi), TextAlign::TOP_CENTER, fmt, v);
           };
 
           // Ingen data ennå: si det tydelig
@@ -97,52 +106,99 @@ display:
           if (!isnan(vifte)) it.filled_rectangle(0, 29, (int) (128 * vifte / 100), 5);
 
           // Hva styrer nå? Røyk vises invertert.
-          std::string st = id(automatikk_status).state;
           if (id(krav_royk)) {
             it.filled_rectangle(0, 38, 128, 15);
             it.print(64, 39, id(font_liten), COLOR_OFF, TextAlign::TOP_CENTER, "RØYK - VIFTER STOPPET");
           } else {
-            it.print(64, 38, id(font_tekst), TextAlign::TOP_CENTER, st.c_str());
+            it.print(64, 38, id(font_tekst), TextAlign::TOP_CENTER, id(automatikk_status).state.c_str());
           }
           it.horizontal_line(0, 55, 128);
 
-          // To fliser: ute og tilluft
-          float ute = id(uteluft_temperatur).state;
-          float inn = id(tilluft_temperatur).state;
-          it.print(31, 59, id(font_liten), TextAlign::TOP_CENTER, "Ute");
-          if (isnan(ute)) it.print(31, 71, id(font_verdi), TextAlign::TOP_CENTER, "--");
-          else it.printf(31, 71, id(font_verdi), TextAlign::TOP_CENTER, "%.1f°", ute);
-          it.print(96, 59, id(font_liten), TextAlign::TOP_CENTER, "Tilluft");
-          if (isnan(inn)) it.print(96, 71, id(font_verdi), TextAlign::TOP_CENTER, "--");
-          else it.printf(96, 71, id(font_verdi), TextAlign::TOP_CENTER, "%.1f°", inn);
+          // To fliser: CO2 og fukt ved filteret hvis pakkene er med,
+          // ellers ute- og tillufttemperatur
+          if (!isnan(id(vis_co2))) flis(31, "CO2 ppm", id(vis_co2), "%.0f");
+          else flis(31, "Ute", id(uteluft_temperatur).state, "%.1f°");
+          if (!isnan(id(vis_aggregat_fukt))) flis(96, "Filter fukt", id(vis_aggregat_fukt), "%.0f%%");
+          else flis(96, "Tilluft", id(tilluft_temperatur).state, "%.1f°");
           it.vertical_line(63, 58, 34);
           it.horizontal_line(0, 94, 128);
 
-          // Settpunkt og filterstatus nederst
-          float sp = id(temperatur_innstilling).state;
-          if (isnan(sp)) it.print(0, 98, id(font_tekst), "Settp. --");
-          else it.printf(0, 98, id(font_tekst), "Settp. %.1f°", sp);
-          it.print(127, 98, id(font_tekst), TextAlign::TOP_RIGHT,
-                   id(alarm_filter).state ? "Bytt filter" : "Filter OK");
+          // Nederst: fukt inne og på badet, ellers settpunkt og filter
+          float inne = id(vis_fukt_inne), bad = id(vis_fukt_bad);
+          if (!isnan(inne) || !isnan(bad)) {
+            if (!isnan(inne)) it.printf(0, 98, id(font_tekst), "Inne %.0f%%", inne);
+            if (!isnan(bad)) it.printf(127, 98, id(font_tekst), TextAlign::TOP_RIGHT, "Bad %.0f%%", bad);
+          } else {
+            float sp = id(temperatur_innstilling).state;
+            if (isnan(sp)) it.print(0, 98, id(font_tekst), "Settp. --");
+            else it.printf(0, 98, id(font_tekst), "Settp. %.1f°", sp);
+            it.print(127, 98, id(font_tekst), TextAlign::TOP_RIGHT,
+                     id(alarm_filter).state ? "Bytt filter" : "Filter OK");
+          }
           bunn(0);
+
+      - id: side_temperatur
+        lambda: |-
+          auto bunn = [&](int side) {
+            for (int i = 0; i < 3; i++) {
+              if (i == side) it.filled_circle(56 + i * 8, 123, 2);
+              else it.circle(56 + i * 8, 123, 2);
+            }
+            if (id(alarm_filter).state && (millis() / 1000) % 2)
+              it.filled_rectangle(126, 126, 2, 2);
+          };
+          int y = 18;
+          auto rad = [&](const char *navn, float v) {
+            it.print(0, y, id(font_tekst), navn);
+            if (isnan(v)) it.print(127, y, id(font_tekst), TextAlign::TOP_RIGHT, "--");
+            else it.printf(127, y, id(font_tekst), TextAlign::TOP_RIGHT, "%.1f°", v);
+            y += 14;
+          };
+          auto bar = [&](int by, const char *navn, float v) {
+            it.print(0, by, id(font_tekst), navn);
+            it.rectangle(59, by + 3, 40, 8);
+            if (!isnan(v)) it.filled_rectangle(59, by + 3, (int) (40 * v / 100), 8);
+            if (isnan(v)) it.print(127, by, id(font_tekst), TextAlign::TOP_RIGHT, "--");
+            else it.printf(127, by, id(font_tekst), TextAlign::TOP_RIGHT, "%.0f%%", v);
+          };
+
+          it.print(0, 0, id(font_tekst), "TEMPERATUR");
+          float sp = id(temperatur_innstilling).state;
+          if (isnan(sp)) it.print(127, 0, id(font_tekst), TextAlign::TOP_RIGHT, "Set --");
+          else it.printf(127, 0, id(font_tekst), TextAlign::TOP_RIGHT, "Set %.1f°", sp);
+          it.horizontal_line(0, 15, 128);
+          rad("Ute", id(uteluft_temperatur).state);
+          rad("Tilluft", id(tilluft_temperatur).state);
+          // Fra kondens.yaml, hvis den er med
+          if (!isnan(id(vis_aggregat_temp))) rad("Ved filter", id(vis_aggregat_temp));
+          if (!isnan(id(vis_duggpunkt))) rad("Duggpunkt", id(vis_duggpunkt));
+          float marg = id(vis_margin);
+          if (!isnan(marg)) {
+            // Invertert når det er fare for kondens (< 2°)
+            if (marg < 2.0f) {
+              it.filled_rectangle(0, y, 128, 14);
+              it.print(0, y, id(font_tekst), COLOR_OFF, "Kondensfare");
+              it.printf(127, y, id(font_tekst), COLOR_OFF, TextAlign::TOP_RIGHT, "%.1f°", marg);
+              y += 14;
+            } else {
+              rad("Margin", marg);
+            }
+          }
+          it.horizontal_line(0, 90, 128);
+          bar(93, "Gjenvinn.", id(varmegjenvinning).state);
+          bar(107, "Kolbe", id(varmebatteri).state);
+          bunn(1);
 
       - id: side_vifter
         lambda: |-
           using namespace flexit_modbus_server;
           auto bunn = [&](int side) {
-            for (int i = 0; i < 2; i++) {
-              if (i == side) it.filled_circle(60 + i * 8, 123, 2);
-              else it.circle(60 + i * 8, 123, 2);
+            for (int i = 0; i < 3; i++) {
+              if (i == side) it.filled_circle(56 + i * 8, 123, 2);
+              else it.circle(56 + i * 8, 123, 2);
             }
             if (id(alarm_filter).state && (millis() / 1000) % 2)
               it.filled_rectangle(126, 126, 2, 2);
-          };
-          auto bar = [&](int y, const char *navn, float v) {
-            it.print(0, y, id(font_tekst), navn);
-            it.rectangle(59, y + 3, 40, 8);
-            if (!isnan(v)) it.filled_rectangle(59, y + 3, (int) (40 * v / 100), 8);
-            if (isnan(v)) it.print(127, y, id(font_tekst), TextAlign::TOP_RIGHT, "--");
-            else it.printf(127, y, id(font_tekst), TextAlign::TOP_RIGHT, "%.0f%%", v);
           };
 
           // Viftehastigheter per modus; gjeldende modus invertert
@@ -166,6 +222,12 @@ display:
             else it.print(127, y + 1, id(font_tekst), c, TextAlign::TOP_RIGHT, "--");
           }
           it.horizontal_line(0, 70, 128);
-          bar(76, "Gjenvinn.", id(varmegjenvinning).state);
-          bar(94, "Kolbe", id(varmebatteri).state);
-          bunn(1);
+
+          // Filter og automatikk
+          it.print(0, 76, id(font_tekst), "Filter");
+          it.print(127, 76, id(font_tekst), TextAlign::TOP_RIGHT,
+                   id(alarm_filter).state ? "BYTT" : "OK");
+          it.print(0, 92, id(font_tekst), "Automatikk");
+          it.print(127, 92, id(font_tekst), TextAlign::TOP_RIGHT,
+                   id(automatikk).state ? "På" : "Av");
+          bunn(2);

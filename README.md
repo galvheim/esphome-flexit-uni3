@@ -1,7 +1,8 @@
 # Flexit UNI3 – ESPHome-panel over Modbus
 
-Et ESP32-S3-kort som erstatter (eller sitter ved siden av) CI600-veggpanelet på et Flexit-aggregat med
-CS60-styring. Du får all styring og alle målinger inn i Home Assistant, og kan legge på automatikk etter behov.
+Et ESP32-S3-kort som erstatter CI600-veggpanelet på et Flexit-aggregat med CS60-styring. Originalpanelet kobles
+fra, og ESP-en tar over all styring. Du får alle innstillinger og målinger inn i Home Assistant, og kan legge på
+automatikk etter behov.
 
 *English: ESPHome replacement for the Flexit CI600 wall panel (CS60 controller, e.g. UNI3) over RS485/Modbus.
 Docs are in Norwegian; the YAML is easy to follow with a translator.*
@@ -13,7 +14,7 @@ Docs are in Norwegian; the YAML is easy to follow with a translator.*
 - **I Home Assistant:** modus (Stop/Min/Normal/Max), temperatur-settpunkt og viftehastighet (%) for tilluft
   og avtrekk i hver modus. Du får også ute- og tillufttemperatur, viftehastighet, varmegjenvinning,
   varmebatteri og filteralarm, og knapper for å nullstille alarmer.
-- **Valgfri skjerm:** en 1,5" OLED som viser drift, temperaturer og vifter.
+- **Valgfri skjerm:** en 1,5" OLED som viser drift, temperaturer og vifter. Se [Skjerm](#skjerm).
 - **Valgfri automatikk**, som du slår av og på med én linje per pakke:
   - stopp viftene ved røyk
   - vedfyring (lett overtrykk)
@@ -22,29 +23,32 @@ Docs are in Norwegian; the YAML is easy to follow with a translator.*
   - mindre luft ved regn eller tørr inneluft
   - duggpunkt i aggregatet
 
-**Testet på:** Flexit UNI3 med CS60-styring, med CI600-panelet fjernet. Det skal også virke på andre aggregater
-med CS60 og CI600-panel.
+**Testet på:** Flexit UNI3 med CS60-styring. Det bør også virke på andre aggregater med CS60 og CI600-panel.
 
 ## Slik virker det
 
 CS60 er «sjef» (Modbus-master) på bussen til veggpanelet. Omtrent 9 ganger i sekundet sender den hele
-tilstanden sin til alle som lytter, og den spør panelene om de har noe nytt. ESP-en later som den er et
-CI600-panel på **adresse 3** (originalpanelet bruker 2). Den leser det CS60 sender, og legger kommandoer klare
-som CS60 henter.
+tilstanden sin til alle som lytter, og den spør panelet om det har noe nytt. ESP-en tar plassen til CI600-panelet
+og svarer som et panel på **adresse 3**. Den leser det CS60 sender, og legger kommandoer klare som CS60 henter.
+Det er ESP-en som eier innstillingene, også viftehastighetene for Min/Normal/Max.
 
-> **Viktig:** CS60 leter bare etter paneler (adresse 1–3) i det den starter. **ESP-en må være på før CS60.**
-> Får ESP-en strøm fra samme kabel som i koblingen under, ordner dette seg som regel selv. Ellers: skru av
-> aggregatet, vent litt, og skru på igjen når ESP-en er oppe.
+> **Viktig:**
+> - **Originalpanelet skal kobles fra.** ESP-en er eneste panel og kjører showet. Kabelen som gikk til panelet,
+>   kobles til ESP-en i stedet.
+> - **Slå av aggregatet** (strømmen) før du kobler noe på RJ12-kabelen.
+> - CS60 leter bare etter paneler (adresse 1–3) i det den starter, så **ESP-en må være på før CS60**. Får ESP-en
+>   strøm fra RJ12-kabelen som vist under, ordner dette seg som regel selv. Ellers: slå av aggregatet, vent
+>   litt, og slå det på igjen når ESP-en er oppe.
 
 ## Deler
 
 | Del | Søkeord / merknad |
 |---|---|
 | ESP32-S3 Super Mini | «ESP32-S3 Super Mini». Andre ESP32-S3-kort går også, men da må du sjekke pinnene. |
-| TTL-RS485-modul | Helst en **isolert** modul med **automatisk retning** («TTL to RS485 isolated module», med B0505-DC-DC-omformer på kortet). En MAX485/MAX3485-modul med DE/RE-pinne går også, se [DE/RE-pinne](#dere-pinne). |
+| TTL-RS485-modul | Helst en modul med **galvanisk skille** og **automatisk retning** («TTL to RS485 isolated module», med B0505-DC-DC-omformer på kortet). Den mates med 5 V og gir 3,3 V-signaler til ESP-en. En MAX485/MAX3485-modul med DE/RE-pinne går også, se [DE/RE-pinne](#dere-pinne). |
 | Buck-omformer 12 V → 5 V | En liten «mini buck step-down» som tåler 12 V inn. |
 | OLED 1,5" 128x128 SH1107 (I2C) | Valgfri. |
-| RJ12-kabel (6 ledere) | Fra CS60-kortet. Du kan bruke kabelen som gikk til det originale panelet. |
+| RJ12-kabel (6 ledere) | Kabelen som gikk til originalpanelet. |
 
 ## Kobling
 
@@ -73,17 +77,16 @@ som CS60 henter.
 | OLED SDA / SCL | ESP **GPIO4** / **GPIO3** |
 
 **Om bildet øverst:**
-- Det sorte kortet er den isolerte RS485-modulen. Den er limt oppå det blå buck-kortet.
+- Det sorte kortet er RS485-modulen. Den er limt oppå det blå buck-kortet. Modulen har galvanisk skille mellom
+  bussiden (A, B og ⏚) og ESP-siden (VCC, GND, TX og RX). Den mates med 5 V og omformer selv signalene til
+  3,3 V for ESP-en.
 - Nederst kommer RJ12-kabelen inn: svart til ⏚, grønn til B+ og rød til A+ på RS485-modulen. Brun (+12 V) og
   blå (GND) går til buck-kortet under.
 - Øverst går fire ledninger til ESP-en: 5 V, GND, TX og RX.
 - Modulen styrer sende/motta-retningen selv, så den har ingen DE-ledning.
 
-> **Spenning:**
-> - Gul ledning er også +12 V. Den må aldri kobles til ESP-en.
-> - Signalnivået på RS485-modulens TX følger som regel modulens VCC, mens ESP32-S3 er laget for 3,3 V på
->   pinnene. Står det «3.3V/5V» på modulen, er det tryggest å koble VCC på modulen til **3V3** på ESP-en i
->   stedet for 5 V.
+> **Spenning:** Gul ledning er også +12 V. Den må aldri kobles til ESP-en. Bruker du en annen RS485-modul, må
+> du sjekke at den gir 3,3 V-signaler til ESP-en.
 
 ## Programvare
 
@@ -108,7 +111,8 @@ legger du `components/` og `packages/` i ESPHome-mappen og bruker `type: local` 
 
 ### Første oppstart
 
-1. Monter ESP-en, slå av aggregatet, og slå det på igjen. ESP-en starter da før CS60.
+1. Slå av aggregatet, koble fra originalpanelet og koble RJ12-kabelen til ESP-en. Slå på aggregatet igjen.
+   ESP-en starter da før CS60.
 2. Åpne loggen i ESPHome (**Logs → Wirelessly**). Hvert minutt kommer en linje som denne:
    ```
    Til adresse 3: oppstartsskann(04)=4 coil-poll(01)=812 les(03)=0 annet=0 | broadcast fra CS60=540
@@ -118,6 +122,20 @@ legger du `components/` og `packages/` i ESPHome-mappen og bruker `type: local` 
 3. Ved første oppstart **overtar ESP-en viftehastighetene anlegget allerede bruker**. Etter det er det
    ESP-en som eier dem, og du endrer dem i HA.
 
+## Skjerm
+
+Med `skjerm.yaml` får du tre sider som veksler hvert 5. sekund: drift, temperatur og vifter. Verdier fra de
+valgfrie pakkene vises når pakken er med: CO2 (`co2.yaml`), fukt inne (`torr_luft.yaml`), fukt på badet
+(`dusj.yaml`) og fukt, temperatur og duggpunkt ved filteret (`kondens.yaml`). Uten dem viser første side ute- og
+tillufttemperatur i stedet. Er margin til duggpunktet under 2°, vises «Kondensfare» invertert.
+
+<p>
+  <img src="docs/bilder/skjerm-drift.jpg" alt="Skjermen, side 1: drift" width="45%">
+  <img src="docs/bilder/skjerm-temperatur.jpg" alt="Skjermen, side 2: temperatur" width="45%">
+</p>
+
+*Bildene er fra mitt eget anlegg med alle pakkene på. Små forskjeller i tekst og plassering kan forekomme.*
+
 ## Pakker
 
 `kjerne.yaml` må alltid være med. De andre er valgfrie og avhenger ikke av hverandre.
@@ -125,7 +143,7 @@ legger du `components/` og `packages/` i ESPHome-mappen og bruker `type: local` 
 | Pakke | Gjør | Trenger (substitution) |
 |---|---|---|
 | `kjerne.yaml` | Panelet: målinger, modus, settpunkt, vifter, alarmer, bryteren «Automatikk» | – |
-| `skjerm.yaml` | OLED 128x128 med to sider som veksler | `i2c_sda_pin`, `i2c_scl_pin` |
+| `skjerm.yaml` | OLED 128x128 med tre sider som veksler, se [Skjerm](#skjerm) | `i2c_sda_pin`, `i2c_scl_pin` |
 | `roykstopp.yaml` | Stop når røykvarsler går, og tilbake når den er klar. Bryter «Røykstopp». | `royk_entitet` |
 | `peis.yaml` | Bryter «Vedfyring»: Normal og senket avtrekk (lett overtrykk) i `peis_min` min | – |
 | `boost.yaml` | Bryter «Boost»: Max i `boost_min` min | – |
@@ -183,10 +201,9 @@ Et ferdig dashboard (bare innebygde kort) finner du i
 | Symptom | Prøv |
 |---|---|
 | `broadcast fra CS60=0` | Bytt A og B. Sjekk at buss-GND (svart) er koblet. Bytt TX og RX mellom ESP og modul. |
-| `broadcast` øker, men `coil-poll=0` | CS60 har ikke funnet ESP-en. Slå aggregatet av og på mens ESP-en er på. Sjekk at `modbus_adresse` ikke er den samme som et annet panel bruker. |
+| `broadcast` øker, men `coil-poll=0` | CS60 har ikke funnet ESP-en. Slå aggregatet av og på mens ESP-en er på. Sjekk at originalpanelet er koblet fra. |
 | Verdiene i HA står stille | Ikke senk loggnivået under `DEBUG` (kjent feil, MSkjel issue #16). |
 | Skjermen er svart | Sjekk SDA/SCL. Noen skjermer bruker adresse `0x3D` (`skjerm_adresse`). |
-| Viftene går tilbake til gamle verdier | Er originalpanelet fortsatt koblet til, kan det sende sine verdier. ESP-en sender sine på nytt etter `vifte_synk_min` minutter. |
 
 Trenger du mer detaljert logg, setter du `logger: level: VERBOSE`. Da logges hver Modbus-ramme som hex.
 
@@ -203,13 +220,6 @@ flexit_modbus_server:
 ```
 
 Moduler med automatisk retning (som den på bildet) trenger ikke dette.
-
-### Sammen med originalpanelet
-
-ESP-en bruker adresse 3, så CI600-panelet (adresse 2) kan i prinsippet sitte på samme buss. Det er slik
-MSkjel sin opprinnelige komponent brukes, men dette oppsettet er bare testet med panelet fjernet. Med begge
-koblet til kan begge endre innstillinger, og ESP-en sender sine viftehastigheter på nytt når CS60 melder noe
-annet. Ifølge MSkjel kan tilluftstemperaturen bare settes fra ESP-en når CI600 ikke er koblet til.
 
 ## Takk og lisens
 

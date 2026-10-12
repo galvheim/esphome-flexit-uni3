@@ -1,8 +1,8 @@
 # ============================================================
 # KJERNE – må alltid være med
 # ============================================================
-# ESP-en oppfører seg som et CI600-veggpanel på Modbus-bussen til
-# CS60-styringen. Den leser alt CS60 kringkaster (temperaturer, modus,
+# ESP-en tar plassen til CI600-veggpanelet (som kobles fra) på
+# Modbus-bussen til CS60-styringen. Den leser alt CS60 kringkaster (temperaturer, modus,
 # vifter, alarmer) og sender kommandoer tilbake.
 #
 # Denne pakken gir:
@@ -19,7 +19,7 @@
 substitutions:
   modbus_tx_pin: GPIO43       # til DI/TXD på RS485-modulen
   modbus_rx_pin: GPIO44       # til RO/RXD på RS485-modulen
-  modbus_adresse: "3"         # 1–3. Originalpanelet bruker 2.
+  modbus_adresse: "3"         # 1–3: CS60 leter bare etter paneler på disse adressene
   vifte_synk_min: "10"        # samme viftehastighet sendes tidligst på nytt etter så mange minutter
 
 esp32:
@@ -129,6 +129,37 @@ globals:
     type: std::string
     restore_value: no
     initial_value: '"Av"'
+
+  # Verdier fra de valgfrie pakkene som skjermen viser når de finnes.
+  # NAN = pakken er ikke med (eller sensoren er utilgjengelig).
+  - id: vis_co2                 # co2.yaml
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: vis_fukt_inne           # torr_luft.yaml
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: vis_fukt_bad            # dusj.yaml
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: vis_aggregat_temp       # kondens.yaml
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: vis_aggregat_fukt       # kondens.yaml
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: vis_duggpunkt           # kondens.yaml
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: vis_margin              # kondens.yaml
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
 
 interval:
   - interval: 10s

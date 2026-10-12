@@ -9,7 +9,9 @@
 #      under «substitutions» så de passer ditt HA.
 #   4. Første gang flasher du med USB-kabel; senere går det over WiFi.
 #
-# Viktig: ESP-en må være på FØR CS60 starter. Se README.
+# Viktig: Originalpanelet skal kobles fra – ESP-en er eneste panel.
+#         Slå av aggregatet før du kobler, og la ESP-en starte før CS60.
+#         Se README.
 # ============================================================
 
 substitutions:
