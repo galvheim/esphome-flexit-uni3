@@ -1,7 +1,7 @@
 # ============================================================
 # KJERNE – må alltid være med
 # ============================================================
-# ESP-en tar plassen til CI600-veggpanelet (som kobles fra) på
+# ESP-en tar plassen til CL60-veggpanelet (som kobles fra) på
 # Modbus-bussen til CS60-styringen. Den leser alt CS60 kringkaster (temperaturer, modus,
 # vifter, alarmer) og sender kommandoer tilbake.
 #

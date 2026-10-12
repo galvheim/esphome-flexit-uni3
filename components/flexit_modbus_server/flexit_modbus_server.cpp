@@ -5,7 +5,7 @@
 //
 // Endringer i denne kopien:
 //  - Svarer på CS60-ens oppstartsskanning (fn 04, reg 0–3) slik det originale
-//    CI600-panelet gjør. Da godtar CS60 ESP-en som panel også når CI600 er fjernet.
+//    CL60-panelet gjør. Da godtar CS60 ESP-en som panel når CL60 er koblet fra.
 //  - Strengere lengdesjekk av 0x10-rammer, så en falsk rammestart ikke låser
 //    rammedeleren mens den venter på bytes som aldri kommer.
 //  - Diagnose: et sammendrag hvert 60. s (DEBUG) og hex-logg av rammer (VERBOSE).
@@ -114,7 +114,7 @@ void FlexitModbusServer::setup() {
   mb_.begin(this, baudRate(), server_address_, tx_enable_pin_, tx_enable_direct_, MAX_NUM_COILS, MAX_NUM_HOLDING_REGISTERS, 0, 4);
 
   // CS60 leter etter paneler ved oppstart med "fn 04 reg 0 x4". Det ekte
-  // CI600-panelet svarer 0, 0, 1, 0x0300 (avlest på bussen). Svar det samme,
+  // CL60-panelet svarer 0, 0, 1, 0x0300 (avlest på bussen). Svar det samme,
   // så CS60 godtar oss som et panel og begynner å polle coils.
   mb_.setInputRegister(0, 0x0000);
   mb_.setInputRegister(1, 0x0000);

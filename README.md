@@ -1,39 +1,86 @@
-# Flexit UNI3 – ESPHome-panel over Modbus
+<h1 align="center">Flexit UNI3 × ESPHome</h1>
 
-Et ESP32-S3-kort som erstatter CI600-veggpanelet på et Flexit-aggregat med CS60-styring. Originalpanelet kobles
-fra, og ESP-en tar over all styring. Du får alle innstillinger og målinger inn i Home Assistant, og kan legge på
-automatikk etter behov.
+<p align="center">
+  <b>Kast det gamle veggpanelet – styr hele Flexit-aggregatet fra Home Assistant.</b><br>
+  Full kontroll over tilluft og avtrekk, settpunkt, filter og alarmer.<br>
+  100&nbsp;% lokalt, ingen sky. Delene koster noen hundrelapper.
+</p>
 
-*English: ESPHome replacement for the Flexit CI600 wall panel (CS60 controller, e.g. UNI3) over RS485/Modbus.
-Docs are in Norwegian; the YAML is easy to follow with a translator.*
+<p align="center">
+  <img alt="ESPHome" src="https://img.shields.io/badge/ESPHome-2026.9%2B-000000?logo=esphome&logoColor=white">
+  <img alt="Home Assistant" src="https://img.shields.io/badge/Home%20Assistant-klar-41BDF5?logo=homeassistant&logoColor=white">
+  <img alt="ESP32-S3" src="https://img.shields.io/badge/ESP32--S3-Arduino-E7352C?logo=espressif&logoColor=white">
+  <img alt="Modbus RTU" src="https://img.shields.io/badge/RS485-Modbus%20RTU-6E4AFF">
+  <img alt="Lisens MIT" src="https://img.shields.io/badge/lisens-MIT-2EA44F">
+</p>
 
-![RS485-modulen koblet til kabelen fra CS60](docs/bilder/rs485-kobling.jpg)
+<p align="center">
+  <img src="docs/bilder/dashboard.png" alt="Flexit UNI3 i Home Assistant" width="100%">
+</p>
+
+*English: ESPHome replacement for the Flexit CL60 wall panel on units with the CS60 controller (e.g. UNI3),
+over RS485/Modbus. Docs are in Norwegian – see [Bruk AI som hjelper](#bruk-ai-som-hjelper): any AI assistant
+can explain the repo in your language.*
+
+## Hva er dette?
+
+Et Flexit-aggregat har to deler som snakker sammen over en RS485-kabel:
+
+- **CS60** er **hjernen** – styrekortet *inne i* aggregatet. Det styrer viftene, rotoren og varmebatteriet, og
+  måler temperaturene. CS60 blir der den er, og du trenger ikke åpne eller endre den.
+- **CL60** er **veggpanelet** – knappene og displayet på veggen. **Det er CL60 dette prosjektet erstatter.**
+
+Du kobler fra CL60 og setter inn en ESP32-S3 med en RS485-modul på samme kabel. CS60 tror den snakker med
+panelet sitt, mens ESP-en i virkeligheten sender alt videre til Home Assistant – og tar imot kommandoer tilbake.
+
+```mermaid
+flowchart LR
+  subgraph FØR
+    CL60["CL60<br/>veggpanel"] -- RS485 --> CS60a["CS60<br/>hjernen i aggregatet"]
+  end
+  subgraph ETTER
+    HA["Home Assistant"] <-- WiFi --> ESP["ESP32-S3<br/>+ RS485-modul"] -- RS485 --> CS60b["CS60<br/>hjernen i aggregatet"]
+  end
+```
 
 ## Hva du får
 
-- **I Home Assistant:** modus (Stop/Min/Normal/Max), temperatur-settpunkt og viftehastighet (%) for tilluft
-  og avtrekk i hver modus. Du får også ute- og tillufttemperatur, viftehastighet, varmegjenvinning,
-  varmebatteri og filteralarm, og knapper for å nullstille alarmer.
-- **Valgfri skjerm:** en 1,5" OLED som viser drift, temperaturer og vifter. Se [Skjerm](#skjerm).
-- **Valgfri automatikk**, som du slår av og på med én linje per pakke:
-  - stopp viftene ved røyk
-  - vedfyring (lett overtrykk)
-  - boost
-  - mer luft ved dusj eller høy CO2
-  - mindre luft ved regn eller tørr inneluft
-  - duggpunkt i aggregatet
+**🌀 Full kontroll over viftene.** Sett tilluft og avtrekk hver for seg, i prosent, for Min, Normal og Max. Du
+kan balansere huset selv, for eksempel med litt overtrykk når peisen er tent, og justere alt fra mobilen.
 
-**Testet på:** Flexit UNI3 med CS60-styring. Det bør også virke på andre aggregater med CS60 og CI600-panel.
+**🌡️ Smart styring av settpunktet.** Tillufttemperaturen er et vanlig tall i HA, så automasjonene dine kan
+styre den. Den kan følge varmepumpa, senkes om natta, justeres etter strømprisen eller settes ned når du er
+borte. Se [eksempelet](#smart-settpunkt).
+
+**🧽 Filter og alarmer uten panelmenyer.** Filteralarmen dukker opp i HA, og du kan sende varsel til mobilen.
+Når du har byttet filter, nullstiller du telleren med én knapp. Det samme gjelder de andre alarmene.
+
+**📈 Alt som måles.** Ute- og tillufttemperatur, viftehastighet, varmegjenvinning og varmebatteri, med historikk
+og grafer i HA.
+
+**🤖 Automatikk etter behov.** Slå på pakkene du vil ha:
+- stoppe viftene ved røyk
+- vedfyring med lett overtrykk
+- boost
+- mer luft ved dusj eller høy CO2
+- mindre luft ved regn eller tørr inneluft
+- varsling om kondens i aggregatet
+
+**📟 Valgfri skjerm.** En 1,5" OLED ved aggregatet viser drift, temperaturer og vifter. Se [Skjerm](#skjerm).
+
+**🔒 Lokalt.** Alt går mellom ESP-en og Home Assistant på ditt eget nett, uten noen skytjeneste.
+
+**Testet på:** Flexit UNI3 med CS60. Det bør også virke på andre Flexit-aggregater med CS60 og samme type panel.
 
 ## Slik virker det
 
-CS60 er «sjef» (Modbus-master) på bussen til veggpanelet. Omtrent 9 ganger i sekundet sender den hele
-tilstanden sin til alle som lytter, og den spør panelet om det har noe nytt. ESP-en tar plassen til CI600-panelet
-og svarer som et panel på **adresse 3**. Den leser det CS60 sender, og legger kommandoer klare som CS60 henter.
-Det er ESP-en som eier innstillingene, også viftehastighetene for Min/Normal/Max.
+CS60 er «sjef» (Modbus-master) på panelbussen. Omtrent 9 ganger i sekundet sender den hele tilstanden sin, og
+den spør panelet om det har noe nytt. ESP-en tar plassen til CL60 og svarer som et panel på **adresse 3**. Den
+leser det CS60 sender, og legger kommandoer klare som CS60 henter. Det er ESP-en som eier innstillingene, også
+viftehastighetene.
 
 > **Viktig:**
-> - **Originalpanelet skal kobles fra.** ESP-en er eneste panel og kjører showet. Kabelen som gikk til panelet,
+> - **CL60-panelet skal kobles fra.** ESP-en er eneste panel og kjører showet. Kabelen som gikk til panelet,
 >   kobles til ESP-en i stedet.
 > - **Slå av aggregatet** (strømmen) før du kobler noe på RJ12-kabelen.
 > - CS60 leter bare etter paneler (adresse 1–3) i det den starter, så **ESP-en må være på før CS60**. Får ESP-en
@@ -48,7 +95,7 @@ Det er ESP-en som eier innstillingene, også viftehastighetene for Min/Normal/Ma
 | TTL-RS485-modul | Helst en modul med **galvanisk skille** og **automatisk retning** («TTL to RS485 isolated module», med B0505-DC-DC-omformer på kortet). Den mates med 5 V og gir 3,3 V-signaler til ESP-en. En MAX485/MAX3485-modul med DE/RE-pinne går også, se [DE/RE-pinne](#dere-pinne). |
 | Buck-omformer 12 V → 5 V | En liten «mini buck step-down» som tåler 12 V inn. |
 | OLED 1,5" 128x128 SH1107 (I2C) | Valgfri. |
-| RJ12-kabel (6 ledere) | Kabelen som gikk til originalpanelet. |
+| RJ12-kabel (6 ledere) | Kabelen som gikk til CL60-panelet. |
 
 ## Kobling
 
@@ -76,7 +123,9 @@ Det er ESP-en som eier innstillingene, også viftehastighetene for Min/Normal/Ma
 | OLED VCC / GND | ESP 3V3 / GND |
 | OLED SDA / SCL | ESP **GPIO4** / **GPIO3** |
 
-**Om bildet øverst:**
+![RS485-modulen koblet til kabelen fra CS60](docs/bilder/rs485-kobling.jpg)
+
+**Om bildet:**
 - Det sorte kortet er RS485-modulen. Den er limt oppå det blå buck-kortet. Modulen har galvanisk skille mellom
   bussiden (A, B og ⏚) og ESP-siden (VCC, GND, TX og RX). Den mates med 5 V og omformer selv signalene til
   3,3 V for ESP-en.
@@ -111,7 +160,7 @@ legger du `components/` og `packages/` i ESPHome-mappen og bruker `type: local` 
 
 ### Første oppstart
 
-1. Slå av aggregatet, koble fra originalpanelet og koble RJ12-kabelen til ESP-en. Slå på aggregatet igjen.
+1. Slå av aggregatet, koble fra CL60-panelet og koble RJ12-kabelen til ESP-en. Slå på aggregatet igjen.
    ESP-en starter da før CS60.
 2. Åpne loggen i ESPHome (**Logs → Wirelessly**). Hvert minutt kommer en linje som denne:
    ```
@@ -193,15 +242,43 @@ Med enhetsnavnet «Flexit UNI3» får du blant annet:
 | `switch.flexit_uni3_automatikk` | Automatikk av/på |
 | `sensor.flexit_uni3_automatikk_status` | Hva som styrer nå |
 
-Et ferdig dashboard (bare innebygde kort) finner du i
-[`ha-eksempler/dashboard-ventilasjon.yaml`](ha-eksempler/dashboard-ventilasjon.yaml).
+Et ferdig dashboard finner du i [`ha-eksempler/dashboard-ventilasjon.yaml`](ha-eksempler/dashboard-ventilasjon.yaml).
+Det bruker bare innebygde kort. Hovedbildet øverst er laget med
+[Mushroom](https://github.com/piitaya/lovelace-mushroom)-kort fra HACS.
+
+### Smart settpunkt
+
+Settpunktet er en vanlig `number`-entitet, så du kan styre det med automasjoner i HA. Dette eksempelet lar
+tilluften følge ønsket temperatur på varmepumpa, 2 grader lavere og aldri under 15 °C:
+
+```yaml
+alias: Flexit – settpunkt følger varmepumpa
+triggers:
+  - trigger: state
+    entity_id: climate.varmepumpe
+    attribute: temperature
+  - trigger: time_pattern
+    minutes: /10
+actions:
+  - action: number.set_value
+    target:
+      entity_id: number.flexit_uni3_temperatur_innstilling
+    data:
+      value: "{{ [ state_attr('climate.varmepumpe', 'temperature') | float(21) - 2, 15 ] | max }}"
+```
+
+Andre ideer:
+- nattsenking med en tidsplan
+- lavere settpunkt når strømprisen er høy
+- borte-modus når alle har reist
+- varsel til mobilen når `binary_sensor.flexit_uni3_filterbytte` blir på
 
 ## Feilsøking
 
 | Symptom | Prøv |
 |---|---|
 | `broadcast fra CS60=0` | Bytt A og B. Sjekk at buss-GND (svart) er koblet. Bytt TX og RX mellom ESP og modul. |
-| `broadcast` øker, men `coil-poll=0` | CS60 har ikke funnet ESP-en. Slå aggregatet av og på mens ESP-en er på. Sjekk at originalpanelet er koblet fra. |
+| `broadcast` øker, men `coil-poll=0` | CS60 har ikke funnet ESP-en. Slå aggregatet av og på mens ESP-en er på. Sjekk at CL60-panelet er koblet fra. |
 | Verdiene i HA står stille | Ikke senk loggnivået under `DEBUG` (kjent feil, MSkjel issue #16). |
 | Skjermen er svart | Sjekk SDA/SCL. Noen skjermer bruker adresse `0x3D` (`skjerm_adresse`). |
 
@@ -221,12 +298,36 @@ flexit_modbus_server:
 
 Moduler med automatisk retning (som den på bildet) trenger ikke dette.
 
+## Bruk AI som hjelper
+
+Ingen hus er like, og koden må nesten alltid tilpasses litt: dine sensorer, dine rom, dine terskler. Her er en
+AI-assistent som [Claude](https://claude.ai) til stor hjelp. Koden er skrevet for å være lett å lese og har
+kommentarer på norsk, så en AI forstår raskt hvordan alt henger sammen.
+
+- **Tilpasning:** Gi AI-en lenken til dette repoet og din `flexit-uni3.yaml`. Fortell hvilke sensorer du har i
+  HA, og be den sette opp pakkene og entitets-ID-ene for deg.
+- **Nye funksjoner:** Be den lage en ny pakke etter samme mønster. Den kan for eksempel lage en pakke som setter
+  krav om Min når strømprisen er høy.
+- **Feilsøking:** Lim inn loggen fra ESPHome (gjerne sammendragslinjen med `broadcast` og `coil-poll`) og
+  beskriv koblingen din. Da kan den hjelpe deg å finne ut om det er A/B, TX/RX, adresse eller oppstartsrekkefølge.
+- **Kodeagenter** som [Claude Code](https://claude.com/claude-code) kan klone repoet, endre filene og kompilere
+  for deg.
+
+Eksempel på en melding:
+
+> Her er repoet https://github.com/galvheim/esphome-flexit-uni3. Jeg har en Flexit UNI3 og vil bruke dusj- og
+> CO2-pakken. Fuktsensoren på badet heter `sensor.bad_fukt` og CO2-sensoren heter `sensor.stue_co2`. Lag
+> `flexit-uni3.yaml` til meg.
+
+Sjekk alltid det AI-en foreslår før du flasher. Spesielt viktig er det med kobling og spenning.
+
 ## Takk og lisens
 
 - Modbus-komponenten bygger på [MSkjel/esphome-flexit-modbus-server](https://github.com/MSkjel/esphome-flexit-modbus-server).
   Biblioteket under er [MSkjel/ESP-ModbusRTUServer](https://github.com/MSkjel/ESP-ModbusRTUServer).
   Begge har MIT-lisens. Endringene i denne kopien står øverst i
   [`flexit_modbus_server.cpp`](components/flexit_modbus_server/flexit_modbus_server.cpp).
+  MSkjels komponent er skrevet for anlegg med CI600-panel; her brukes den i stedet for CL60.
 - Lisens: [MIT](LICENSE).
 - Dette er et hobbyprosjekt uten tilknytning til Flexit. Bruk på eget ansvar. Røykstopp-funksjonen er ikke et
   godkjent brannsikringssystem.
